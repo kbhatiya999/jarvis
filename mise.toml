@@ -102,3 +102,29 @@ description = "Show status of every Tilt resource"
 run = '''
 tilt get uiresource -o json | jq -r '.items[] | select(.metadata.name != "(Tiltfile)") | [.metadata.name, (.status.updateStatus // "-"), (if (.status.buildHistory[0].error // "") != "" then "FAILED: " + .status.buildHistory[0].error else "ok/none" end), (.status.buildHistory[0].finishTime // "never")] | @tsv' | column -t -s "$(printf '\t')"
 '''
+
+# Wireless debugging (Android 11+): phone and Mac on the same Wi-Fi.
+[tasks."phone:pair"]
+description = "Pair over Wi-Fi: mise run phone:pair <ip:port> <code> (from 'Pair device with pairing code')"
+depends = ["setup"]
+usage = '''
+arg "<address>" help="IP:port shown in the pairing dialog"
+arg "<code>" help="6-digit pairing code"
+'''
+run = '$ANDROID_HOME/platform-tools/adb pair "${usage_address}" "${usage_code}"'
+
+[tasks."phone:connect"]
+description = "Connect over Wi-Fi: mise run phone:connect [ip:port] (no address = auto-discover paired phone)"
+depends = ["setup"]
+usage = 'arg "[address]" help="IP:port on the Wireless debugging screen"'
+run = '''
+ADB="$ANDROID_HOME/platform-tools/adb"
+if [ -n "${usage_address:-}" ]; then
+  "$ADB" connect "${usage_address}"
+else
+  addr="$("$ADB" mdns services | awk '/_adb-tls-connect/ {print $NF; exit}')"
+  [ -n "$addr" ] || { echo "No paired phone found on Wi-Fi; pass the IP:port from the Wireless debugging screen." >&2; exit 1; }
+  "$ADB" connect "$addr"
+fi
+"$ADB" devices -l
+'''
