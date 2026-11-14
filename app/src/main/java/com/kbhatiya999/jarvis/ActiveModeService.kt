@@ -101,7 +101,7 @@ class ActiveModeService : Service() {
 
     private fun allowedNow(pkg: String): Boolean {
         val now = System.currentTimeMillis()
-        if (now - settings.lastPromptAt < settings.cooldownMinutes * 60_000L) return false
+        if (now - settings.lastPromptAt < settings.cooldownSeconds * 1000L) return false
         if (settings.quietHours) {
             val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
             if (h >= 23 || h < 7) return false

@@ -17,13 +17,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -38,10 +42,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
+
+private val COOLDOWN_PRESETS = listOf(
+    0 to "Every app open (no cooldown)",
+    30 to "30 seconds",
+    300 to "5 minutes",
+    900 to "15 minutes",
+    1800 to "30 minutes",
+    3600 to "1 hour",
+)
+
+private fun formatSeconds(s: Int) = when {
+    s % 3600 == 0 -> "${s / 3600} h"
+    s % 60 == 0 -> "${s / 60} min"
+    else -> "$s sec"
+}
 
 private fun granted(context: Context, permission: String) =
     ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
@@ -52,7 +72,9 @@ fun ActiveScreen(vm: JarvisViewModel) {
     val settings = vm.settings
     var enabled by remember { mutableStateOf(settings.activeEnabled && ActiveModeService.running) }
     var watcherOn by remember { mutableStateOf(AppWatcher.isEnabled(context)) }
-    var cooldown by remember { mutableStateOf(settings.cooldownMinutes) }
+    var cooldown by remember { mutableStateOf(settings.cooldownSeconds) }
+    var custom by remember { mutableStateOf(cooldown !in COOLDOWN_PRESETS.map { it.first }) }
+    var customText by remember { mutableStateOf(if (custom) cooldown.toString() else "") }
     var quiet by remember { mutableStateOf(settings.quietHours) }
 
     // Re-check after coming back from system settings.
@@ -75,7 +97,7 @@ fun ActiveScreen(vm: JarvisViewModel) {
     BackHandler { vm.showActiveSettings = false }
 
     Column(
-        Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp),
+        Modifier.fillMaxSize().safeDrawingPadding().imePadding().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -136,13 +158,42 @@ fun ActiveScreen(vm: JarvisViewModel) {
         }
 
         HorizontalDivider()
-        Text("Speak up at most every", fontWeight = FontWeight.Bold)
-        listOf(5, 15, 30, 60).forEach { m ->
+        Text("How often Jarvis may speak up", fontWeight = FontWeight.Bold)
+        COOLDOWN_PRESETS.forEach { (secs, label) ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = cooldown == m, onClick = { cooldown = m; settings.cooldownMinutes = m })
-                Text("$m minutes")
+                RadioButton(
+                    selected = !custom && cooldown == secs,
+                    onClick = { custom = false; cooldown = secs; settings.cooldownSeconds = secs },
+                )
+                Text(label)
             }
         }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(selected = custom, onClick = {
+                custom = true
+                customText.toIntOrNull()?.let { cooldown = it; settings.cooldownSeconds = it }
+            })
+            Text("Custom")
+            Spacer(Modifier.width(12.dp))
+            OutlinedTextField(
+                value = customText,
+                onValueChange = { v ->
+                    customText = v.filter { it.isDigit() }.take(6)
+                    custom = true
+                    customText.toIntOrNull()?.let { cooldown = it; settings.cooldownSeconds = it }
+                },
+                placeholder = { Text("e.g. 90") },
+                suffix = { Text("sec") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.width(140.dp),
+            )
+        }
+        Text(
+            if (cooldown == 0) "Speaks on every app open (once the previous one has finished)."
+            else "At most once every ${formatSeconds(cooldown)}.",
+            fontSize = 13.sp, color = Color.Gray,
+        )
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {

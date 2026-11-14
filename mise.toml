@@ -36,9 +36,13 @@ description = "Remove build outputs"
 run = "./gradlew clean"
 
 [tasks.install]
-description = "Install the debug APK on a connected device/emulator"
-depends = ["build"]
-run = "$ANDROID_HOME/platform-tools/adb install -r app/build/outputs/apk/debug/app-debug.apk"
+description = "Build with the release key and install on the USB/wifi-connected phone (upgrades the Obtainium copy)"
+run = "scripts/install.sh"
+
+[tasks.devices]
+description = "List phones/emulators adb can see"
+depends = ["setup"]
+run = "$ANDROID_HOME/platform-tools/adb devices -l"
 
 [tasks."keystore:gen"]
 description = "Create a release keystore and store its details in fnox.local.toml (plain text)"

@@ -4,11 +4,13 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-// Version comes from the release tag (APP_VERSION=0.1.0) and the CI run number.
-// Obtainium only offers an update when versionName/tag changes; Android only
-// installs it when versionCode increases.
-val appVersion = (System.getenv("APP_VERSION") ?: "0.0.0-dev").removePrefix("v")
-val appVersionCode = (System.getenv("APP_VERSION_CODE") ?: "1").toInt()
+// Version name comes from the release tag (APP_VERSION=v0.1.0). Version code is minutes since
+// 2020 at build time, so every build (CI release or a local adb install) is an upgrade over
+// the previous one. Obtainium offers an update when the tag changes; Android installs it
+// only when versionCode increases.
+val appVersion = (System.getenv("APP_VERSION")?.takeIf { it.isNotBlank() } ?: "0.0.0-dev").removePrefix("v")
+val appVersionCode = System.getenv("APP_VERSION_CODE")?.toIntOrNull()
+    ?: ((System.currentTimeMillis() / 60_000L) - 26_297_280L).toInt() // minutes since 2020-01-01
 
 android {
     namespace = "com.kbhatiya999.jarvis"

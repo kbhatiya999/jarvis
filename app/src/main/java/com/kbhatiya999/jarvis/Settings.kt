@@ -9,10 +9,10 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("active_enabled", false)
         set(v) = prefs.edit().putBoolean("active_enabled", v).apply()
 
-    /** Minimum gap between two proactive prompts. */
-    var cooldownMinutes: Int
-        get() = prefs.getInt("cooldown_minutes", 30)
-        set(v) = prefs.edit().putInt("cooldown_minutes", v).apply()
+    /** Minimum gap between two proactive prompts, in seconds. 0 = speak on every app open. */
+    var cooldownSeconds: Int
+        get() = prefs.getInt("cooldown_seconds", prefs.getInt("cooldown_minutes", 30) * 60)
+        set(v) = prefs.edit().putInt("cooldown_seconds", maxOf(0, v)).apply()
 
     /** No proactive prompts from 23:00 to 07:00. */
     var quietHours: Boolean
