@@ -11,3 +11,6 @@ fnox.local.toml
 .secrets/
 *.jks
 *.keystore
+
+# values typed into tilt:* tasks / Tilt buttons (version, pairing code)
+.tilt-inputs/

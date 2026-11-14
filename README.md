@@ -28,41 +28,52 @@ Every release is signed with the same key, so updates install over the existing 
 
 ## Develop
 
-Tools are managed by [mise](https://mise.jdx.dev/); env and secrets by [fnox](https://fnox.jdx.dev/); [Tilt](https://tilt.dev/) is the dashboard. mise also installs the Android SDK; `mise install` then `mise run setup` is all a fresh machine needs.
+Tools come from [mise](https://mise.jdx.dev/), including the Android SDK. Env and secrets come from [fnox](https://fnox.jdx.dev/). [Tilt](https://tilt.dev/) runs and shows the workflow.
+
+**Everything goes through `tilt:` tasks.** `mise run tilt:<name>` presses that button in Tilt, starting Tilt in the background if needed. It streams the log to your terminal and waits for the result, so every run also appears in the dashboard at http://localhost:10350. `mise tasks` lists only these. The individual steps are hidden mise tasks that Tilt runs. Nothing runs automatically: not on save, commit or push.
 
 ```bash
-mise install          # java, gradle, android-sdk, tilt, fnox, gh
-mise tasks            # list every command
-mise run build        # debug APK
-mise run lint
-mise run install      # install on your phone (see Phone)
-mise run tilt:up      # dashboard; every resource just runs a mise task
+mise install                 # java, gradle, android-sdk, tilt, fnox, gh
+mise tasks                   # the tilt:* commands
+mise run tilt:status         # every step and pipeline, with its last result
+mise run tilt:logs [name]
 ```
+
+In Tilt, resources are grouped into:
+
+| Group | Resources |
+|---|---|
+| pipelines | **release** (release-check → lint → build-release → release-publish), **install** (build-release → install-apk) |
+| setup | setup, env-check, keystore-gen, secrets-push |
+| build | lint, build, build-release |
+| phone | devices, phone-pair, phone-connect, install-apk |
+| release | release-check, release-publish, release-ci |
+
+A pipeline presses its steps in order and stops at the first failure. Each step keeps its own log and status.
 
 ### Environment (fnox)
 
 - `fnox.toml` is committed and holds non-secret defaults.
 - `fnox.local.toml` is gitignored and overrides it. Put real secrets here. For now everything is **plain text, not encrypted**.
+- Variables you set yourself take precedence over both.
 
 ### Releasing
 
-Nothing builds or releases automatically, not on save, commit or push. Releases are made from your Mac:
-
 ```bash
-mise run release          # next patch version (see: mise run version:next)
-mise run release 0.6.0    # or a version you choose
+mise run tilt:release          # next patch version after the latest tag
+mise run tilt:release 0.6.0    # or a version you choose
 ```
 
-This lints, builds and signs the APK locally, tags `vX.Y.Z`, and publishes the GitHub release that Obtainium reads. From Tilt, use the **release** button (with an optional version box) or `mise run tilt:release [x.y.z]`.
+Everything happens on your Mac. It checks you're on `main` with a clean tree and an unused tag, lints, builds and signs the APK, then tags `vX.Y.Z` and publishes the GitHub release that Obtainium reads. In the dashboard, use **release** or its *Release version* button.
 
-One-time setup: `mise run keystore:gen` creates the signing key in `.secrets/` and `fnox.local.toml`. Back both up: if the key is lost, installed copies can no longer be updated.
+One-time setup: `mise run tilt:keystore-gen` creates the signing key in `.secrets/` and `fnox.local.toml`. Back both up: if the key is lost, installed copies can no longer be updated.
 
-Fallback: `mise run release:ci [x.y.z]` has GitHub Actions build and publish instead. It needs `mise run secrets:push` once. The Build and Release workflows only run when started by hand.
+Fallback: `mise run tilt:release-ci [x.y.z]` has GitHub Actions build and publish instead. It needs `mise run tilt:secrets-push` once. The GitHub workflows only run when started like this or by hand.
 
 ### Phone
 
 ```bash
-mise run phone:pair <ip:port> <code>   # once, from Wireless debugging -> Pair device with pairing code
-mise run phone:connect                 # finds the paired phone on Wi-Fi
-mise run install                       # release-signed build, installs over the Obtainium copy
+mise run tilt:phone-pair <ip:port> <code>   # once: Wireless debugging -> Pair device with pairing code
+mise run tilt:phone-connect                 # finds the paired phone on Wi-Fi
+mise run tilt:install                       # signed build, installs over the Obtainium copy
 ```

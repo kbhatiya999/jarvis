@@ -1,43 +1,72 @@
 load('ext://uibutton', 'cmd_button', 'text_input')
 
-# Tilt is a dashboard over the mise tasks: each resource is a button that runs one task.
-# Nothing runs by itself (not on start, save or commit). Press a button in the UI, or run
-# `mise run tilt:<resource>` from a terminal. Start it with: mise run tilt:up
-
-config.define_string('version')
-cfg = config.parse()
-version = cfg.get('version', '')  # set by `mise run tilt:release <x.y.z>`; empty = next patch
-
-
-def task(name, cmd, label):
-    local_resource(name, cmd=cmd, labels=[label], trigger_mode=TRIGGER_MODE_MANUAL, auto_init=False)
+# The Jarvis workflow, as seen in Tilt (http://localhost:10350).
+#
+#   steps      one resource per job; each runs one hidden mise task
+#   pipelines  press steps in order and stop at the first failure (release, install)
+#
+# Nothing runs by itself: not on start, save or commit. Press a button here, or run
+# `mise run tilt:<name>` in a terminal: it presses the same button, streams the log and
+# waits for the result. Resources allow parallel runs, otherwise a pipeline would block the
+# steps it presses. Values you type (version, pairing code) go to .tilt-inputs/.
 
 
-# setup
-task('env-check', 'fnox check', 'setup')
-task('secrets-push', 'mise run secrets:push', 'setup')
+# Each run's output is also written to .tilt-inputs/logs/<name>.log, which tilt:* tasks stream.
+def logged(name, cmd):
+    return 'set -o pipefail; mkdir -p .tilt-inputs/logs; (%s) 2>&1 | tee .tilt-inputs/logs/%s.log' % (cmd, name)
 
-# quality / build
-task('lint', 'mise run lint', 'quality')
-task('build', 'mise run build', 'build')
-task('build-release', 'mise run build:release', 'build')
 
-# phone
-task('devices', 'mise run devices', 'phone')
-task('phone-connect', 'mise run phone:connect', 'phone')
-task('install', 'mise run install', 'phone')
+def step(name, task, label):
+    local_resource(name, cmd=logged(name, 'mise run -q %s' % task), labels=[label],
+                   trigger_mode=TRIGGER_MODE_MANUAL, auto_init=False, allow_parallel=True)
 
-# release: local is the normal path; release-ci asks GitHub Actions to do it instead.
-task('release', 'mise run release %s' % version, 'release')
-task('release-ci', 'mise run release:ci %s' % version, 'release')
 
-# Version box on the release buttons; leave empty for the next patch version.
-for res, script in [('release', 'release'), ('release-ci', 'release:ci')]:
-    cmd_button(
-        name='%s-version' % res,
-        resource=res,
-        icon_name='rocket_launch',
-        text='Release version',
-        argv=['sh', '-c', 'mise run %s "$VERSION"' % script],
-        inputs=[text_input('VERSION', label='Version (x.y.z)', placeholder='empty = next patch')],
-    )
+def pipeline(name, steps, before=''):
+    local_resource(name, cmd=logged(name, before + 'scripts/tilt-run.sh ' + ' '.join(steps)), labels=['pipelines'],
+                   trigger_mode=TRIGGER_MODE_MANUAL, auto_init=False, allow_parallel=True)
+
+
+# ---- steps
+step('setup', 'setup', 'setup')
+step('env-check', 'env:check', 'setup')
+step('keystore-gen', 'keystore:gen', 'setup')
+step('secrets-push', 'secrets:push', 'setup')
+
+step('lint', 'lint', 'build')
+step('build', 'build', 'build')
+step('build-release', 'build:release', 'build')
+
+step('devices', 'devices', 'phone')
+step('phone-pair', 'phone:pair', 'phone')
+step('phone-connect', 'phone:connect', 'phone')
+step('install-apk', 'install:apk', 'phone')
+
+step('release-check', 'release:check', 'release')
+step('release-publish', 'release:publish', 'release')
+step('release-ci', 'release:ci', 'release')
+
+# ---- pipelines
+# install: build with the release key, then put it on the phone ("-local" version name).
+pipeline('install', ['build-release', 'install-apk'], before='scripts/tilt-input.sh version && ')
+# release: everything happens on this Mac; GitHub only stores the release for Obtainium.
+pipeline('release', ['release-check', 'lint', 'build-release', 'release-publish'])
+
+# ---- buttons with input boxes
+cmd_button(
+    name='release-with-version', resource='release', icon_name='rocket_launch', text='Release version',
+    argv=['sh', '-c', 'scripts/tilt-input.sh version "$VERSION" && tilt trigger release'],
+    inputs=[text_input('VERSION', label='Version (x.y.z)', placeholder='empty = next patch')],
+)
+cmd_button(
+    name='release-ci-with-version', resource='release-ci', icon_name='cloud_upload', text='CI release version',
+    argv=['sh', '-c', 'scripts/tilt-input.sh version "$VERSION" && tilt trigger release-ci'],
+    inputs=[text_input('VERSION', label='Version (x.y.z)', placeholder='empty = next patch')],
+)
+cmd_button(
+    name='pair-with-code', resource='phone-pair', icon_name='link', text='Pair',
+    argv=['sh', '-c', 'scripts/tilt-input.sh pair-address "$ADDRESS" && scripts/tilt-input.sh pair-code "$CODE" && tilt trigger phone-pair'],
+    inputs=[
+        text_input('ADDRESS', label='IP:port (pairing dialog)', placeholder='192.168.1.23:37115'),
+        text_input('CODE', label='Pairing code', placeholder='123456'),
+    ],
+)
