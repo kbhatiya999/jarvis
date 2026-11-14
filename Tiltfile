@@ -1,3 +1,4 @@
+load('ext://uibutton', 'cmd_button', 'text_input')
 # Tilt = a dashboard over the workflow. Every resource just runs a mise task,
 # so Tilt, your terminal and CI all do the same thing.   Start it: mise run tilt:up
 
