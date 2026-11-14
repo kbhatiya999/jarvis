@@ -55,9 +55,13 @@ local_resource(
 # Release: type a version in the button's field and click it. Tags vX.Y.Z and pushes;
 # GitHub Actions then builds, signs and publishes the APK for Obtainium.
 # Order for the very first release: run `secrets-push` once, then the release button.
+config.define_string('version')
+cfg = config.parse()
+version = cfg.get('version', '')
+
 local_resource(
     'release',
-    cmd='echo "Use the Release button (version field) on this resource."',
+    cmd=('mise run release %s' % version) if version else 'echo "Set a version: mise run tilt:release 0.1.0 (or use the Release button)"; exit 1',
     trigger_mode=TRIGGER_MODE_MANUAL,
     auto_init=False,
     labels=['release'],

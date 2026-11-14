@@ -52,3 +52,31 @@ run = "tilt up"
 [tasks."tilt:down"]
 description = "Stop Tilt"
 run = "tilt down"
+
+# tilt:* tasks drive an already-running Tilt (mise run tilt:up). They trigger
+# resources, so the run shows up in the dashboard with logs and status.
+
+[tasks."tilt:lint"]
+description = "Trigger the lint resource in Tilt"
+run = "tilt trigger lint"
+
+[tasks."tilt:build"]
+description = "Trigger the build resource in Tilt"
+run = "tilt trigger build"
+
+[tasks."tilt:install"]
+description = "Trigger install-on-device in Tilt"
+run = "tilt trigger install-on-device"
+
+[tasks."tilt:secrets-push"]
+description = "Trigger secrets-push in Tilt"
+run = "tilt trigger secrets-push"
+
+[tasks."tilt:release"]
+description = "Trigger a release in Tilt: mise run tilt:release 0.2.0"
+usage = 'arg "<version>" help="Semver x.y.z"'
+run = '''
+tilt args -- --version "${usage_version}"
+sleep 6   # let Tilt reload the Tiltfile with the new version
+tilt trigger release
+'''
