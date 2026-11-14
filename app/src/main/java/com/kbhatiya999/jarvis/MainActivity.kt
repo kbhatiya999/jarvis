@@ -12,7 +12,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
 
         val title = TextView(this).apply {
-            text = getString(R.string.app_name)
+            text = getString(R.string.greeting)
             textSize = 36f
             setTextColor(Color.BLACK)
             gravity = Gravity.CENTER

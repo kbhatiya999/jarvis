@@ -73,5 +73,5 @@ cmd_button(
     icon_name='rocket_launch',
     text='Release',
     argv=['sh', '-c', 'mise run release "$VERSION"'],
-    inputs=[text_input('VERSION', label='Version (x.y.z)', default='0.1.0')],
+    inputs=[text_input('VERSION', label='Version (x.y.z)', placeholder='e.g. 0.2.0')],
 )
