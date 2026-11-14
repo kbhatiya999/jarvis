@@ -18,10 +18,10 @@ Every release is signed with the same key, so updates install over the existing 
 
 ## Develop
 
-Tools are managed by [mise](https://mise.jdx.dev/); env and secrets by [fnox](https://fnox.jdx.dev/); [Tilt](https://tilt.dev/) is the dashboard. Android builds need an Android SDK locally (`ANDROID_HOME`); CI has one.
+Tools are managed by [mise](https://mise.jdx.dev/); env and secrets by [fnox](https://fnox.jdx.dev/); [Tilt](https://tilt.dev/) is the dashboard. mise also installs the Android SDK; `mise install` then `mise run setup` is all a fresh machine needs.
 
 ```bash
-mise install          # java, gradle, tilt, fnox, gh
+mise install          # java, gradle, android-sdk, tilt, fnox, gh
 mise tasks            # list every command
 mise run build        # debug APK
 mise run lint
