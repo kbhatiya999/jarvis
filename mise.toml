@@ -1,109 +1,60 @@
 min_version = "2026.1.0"
 
+# mise provides everything the project needs, including the Android SDK.
 [tools]
 java = "17"
 gradle = "8.10.2"
+android-sdk = "latest"
 tilt = "latest"
 fnox = "latest"
 gh = "latest"
-android-sdk = "latest"
 
-# Every task runs through fnox so env (fnox.toml + fnox.local.toml) is always loaded.
+# Gradle tasks run through scripts/run.sh, which loads env from fnox.toml + fnox.local.toml.
+# Nothing runs automatically: not on save, commit or push. Every task is started by hand,
+# from a terminal (mise run <task>) or from its Tilt button (mise run tilt:<task>).
+
+# ---------------------------------------------------------------- setup
 
 [tasks.setup]
 description = "Install Android SDK packages (idempotent)"
 run = "scripts/setup-android.sh"
 
-[tasks.build]
-depends = ["setup"]
-description = "Build the debug APK"
-run = "scripts/run.sh ./gradlew --no-daemon assembleDebug"
-sources = ["app/src/**/*", "app/build.gradle.kts", "build.gradle.kts", "settings.gradle.kts"]
-outputs = ["app/build/outputs/apk/debug/app-debug.apk"]
+[tasks."keystore:gen"]
+description = "Create the release signing key once; details go to fnox.local.toml (plain text)"
+run = "scripts/gen-keystore.sh"
 
-[tasks."build:release"]
-depends = ["setup"]
-description = "Build the signed release APK (needs signing vars from fnox.local.toml)"
-run = "scripts/build-release.sh"
+[tasks."secrets:push"]
+description = "Copy signing secrets to GitHub (only needed for release:ci)"
+run = "scripts/push-secrets.sh"
+
+# ---------------------------------------------------------------- develop
 
 [tasks.lint]
-depends = ["setup"]
 description = "Run Android lint"
+depends = ["setup"]
 run = "scripts/run.sh ./gradlew --no-daemon lint"
+
+[tasks.build]
+description = "Build the debug APK"
+depends = ["setup"]
+run = "scripts/run.sh ./gradlew --no-daemon assembleDebug"
+
+[tasks."build:release"]
+description = "Build the signed release APK"
+depends = ["setup"]
+run = "scripts/build-release.sh"
 
 [tasks.clean]
 description = "Remove build outputs"
 run = "./gradlew clean"
 
-[tasks.install]
-description = "Build with the release key and install on the USB/wifi-connected phone (upgrades the Obtainium copy)"
-run = "scripts/install.sh"
+# ---------------------------------------------------------------- phone
 
 [tasks.devices]
-description = "List phones/emulators adb can see"
+description = "List phones adb can see"
 depends = ["setup"]
 run = "$ANDROID_HOME/platform-tools/adb devices -l"
 
-[tasks."keystore:gen"]
-description = "Create a release keystore and store its details in fnox.local.toml (plain text)"
-run = "scripts/gen-keystore.sh"
-
-[tasks."secrets:push"]
-description = "Upload signing secrets from fnox.local.toml to GitHub Actions secrets"
-run = "scripts/push-secrets.sh"
-
-[tasks.release]
-description = "Tag and push a release: mise run release 0.2.0 (CI builds and publishes the APK)"
-run = "scripts/release.sh"
-
-[tasks."tilt:up"]
-description = "Open the Tilt dashboard for the workflow"
-run = "tilt up"
-
-[tasks."tilt:down"]
-description = "Stop Tilt"
-run = "tilt down"
-
-# tilt:* tasks drive an already-running Tilt (mise run tilt:up). They trigger
-# resources, so the run shows up in the dashboard with logs and status.
-
-[tasks."tilt:lint"]
-description = "Trigger the lint resource in Tilt"
-run = "tilt trigger lint"
-
-[tasks."tilt:build"]
-description = "Trigger the build resource in Tilt"
-run = "tilt trigger build"
-
-[tasks."tilt:install"]
-description = "Trigger install-on-device in Tilt"
-run = "tilt trigger install-on-device"
-
-[tasks."tilt:secrets-push"]
-description = "Trigger secrets-push in Tilt"
-run = "tilt trigger secrets-push"
-
-[tasks."tilt:release"]
-description = "Trigger a release in Tilt: mise run tilt:release 0.2.0"
-usage = 'arg "<version>" help="Semver x.y.z"'
-run = '''
-tilt args -- --version "${usage_version}"
-sleep 6   # let Tilt reload the Tiltfile with the new version
-tilt trigger release
-'''
-
-[tasks."tilt:logs"]
-description = "Show Tilt logs (no follow): mise run tilt:logs [resource]"
-usage = 'arg "[resource]" help="Resource name; all if omitted"'
-run = 'tilt logs --since 10m ${usage_resource:-}'
-
-[tasks."tilt:status"]
-description = "Show status of every Tilt resource"
-run = '''
-tilt get uiresource -o json | jq -r '.items[] | select(.metadata.name != "(Tiltfile)") | [.metadata.name, (.status.updateStatus // "-"), (if (.status.buildHistory[0].error // "") != "" then "FAILED: " + .status.buildHistory[0].error else "ok/none" end), (.status.buildHistory[0].finishTime // "never")] | @tsv' | column -t -s "$(printf '\t')"
-'''
-
-# Wireless debugging (Android 11+): phone and Mac on the same Wi-Fi.
 [tasks."phone:pair"]
 description = "Pair over Wi-Fi: mise run phone:pair <ip:port> <code> (from 'Pair device with pairing code')"
 depends = ["setup"]
@@ -114,7 +65,7 @@ arg "<code>" help="6-digit pairing code"
 run = '$ANDROID_HOME/platform-tools/adb pair "${usage_address}" "${usage_code}"'
 
 [tasks."phone:connect"]
-description = "Connect over Wi-Fi: mise run phone:connect [ip:port] (no address = auto-discover paired phone)"
+description = "Connect over Wi-Fi: mise run phone:connect [ip:port] (no address = find the paired phone)"
 depends = ["setup"]
 usage = 'arg "[address]" help="IP:port on the Wireless debugging screen"'
 run = '''
@@ -127,4 +78,97 @@ else
   "$ADB" connect "$addr"
 fi
 "$ADB" devices -l
+'''
+
+[tasks.install]
+description = "Build with the release key and install on the connected phone (upgrades the Obtainium copy)"
+run = "scripts/install.sh"
+
+# ---------------------------------------------------------------- release
+
+[tasks."version:next"]
+description = "Print the suggested next version (next patch after the latest tag)"
+run = "scripts/next-version.sh"
+
+[tasks.release]
+description = "Release from this Mac: lint, sign, tag, publish to GitHub for Obtainium. No version = next patch"
+usage = 'arg "[version]" help="x.y.z; defaults to the next patch"'
+run = 'scripts/release.sh "${usage_version:-}"'
+
+[tasks."release:ci"]
+description = "Fallback: have GitHub Actions build and publish the release instead"
+usage = 'arg "[version]" help="x.y.z; defaults to the next patch"'
+run = 'scripts/release-ci.sh "${usage_version:-}"'
+
+# ---------------------------------------------------------------- tilt
+# Dashboard over the tasks above. tilt:<task> presses that task's button in a running Tilt
+# (start it with tilt:up), so the run and its logs show up in the dashboard.
+
+[tasks."tilt:up"]
+description = "Start the Tilt dashboard"
+run = "tilt up"
+
+[tasks."tilt:down"]
+description = "Stop Tilt"
+run = "tilt down"
+
+[tasks."tilt:status"]
+description = "Show status of every Tilt resource"
+run = '''
+tilt get uiresource -o json | jq -r '.items[] | select(.metadata.name != "(Tiltfile)") | [.metadata.name, (.status.updateStatus // "-"), (if (.status.buildHistory[0].error // "") != "" then "FAILED: " + .status.buildHistory[0].error else "ok/none" end), (.status.buildHistory[0].finishTime // "never")] | @tsv' | column -t -s "$(printf '\t')"
+'''
+
+[tasks."tilt:logs"]
+description = "Show Tilt logs (no follow): mise run tilt:logs [resource]"
+usage = 'arg "[resource]" help="Resource name; all if omitted"'
+run = 'tilt logs --since 10m ${usage_resource:-}'
+
+[tasks."tilt:env-check"]
+description = "Tilt: check fnox env"
+run = "tilt trigger env-check"
+
+[tasks."tilt:lint"]
+description = "Tilt: lint"
+run = "tilt trigger lint"
+
+[tasks."tilt:build"]
+description = "Tilt: debug build"
+run = "tilt trigger build"
+
+[tasks."tilt:build-release"]
+description = "Tilt: signed release build"
+run = "tilt trigger build-release"
+
+[tasks."tilt:devices"]
+description = "Tilt: list phones"
+run = "tilt trigger devices"
+
+[tasks."tilt:phone-connect"]
+description = "Tilt: connect to the paired phone over Wi-Fi"
+run = "tilt trigger phone-connect"
+
+[tasks."tilt:install"]
+description = "Tilt: install on the phone"
+run = "tilt trigger install"
+
+[tasks."tilt:secrets-push"]
+description = "Tilt: copy signing secrets to GitHub"
+run = "tilt trigger secrets-push"
+
+[tasks."tilt:release"]
+description = "Tilt: local release. mise run tilt:release [x.y.z] (no version = next patch)"
+usage = 'arg "[version]" help="x.y.z; defaults to the next patch"'
+run = '''
+if [ -n "${usage_version:-}" ]; then tilt args -- --version "${usage_version}"; else tilt args --clear; fi
+sleep 6   # let Tilt reload the Tiltfile with the new version
+tilt trigger release
+'''
+
+[tasks."tilt:release-ci"]
+description = "Tilt: CI fallback release. mise run tilt:release-ci [x.y.z]"
+usage = 'arg "[version]" help="x.y.z; defaults to the next patch"'
+run = '''
+if [ -n "${usage_version:-}" ]; then tilt args -- --version "${usage_version}"; else tilt args --clear; fi
+sleep 6
+tilt trigger release-ci
 '''

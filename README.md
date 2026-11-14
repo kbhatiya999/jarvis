@@ -35,7 +35,7 @@ mise install          # java, gradle, android-sdk, tilt, fnox, gh
 mise tasks            # list every command
 mise run build        # debug APK
 mise run lint
-mise run install      # adb install
+mise run install      # install on your phone (see Phone)
 mise run tilt:up      # dashboard; every resource just runs a mise task
 ```
 
@@ -46,19 +46,23 @@ mise run tilt:up      # dashboard; every resource just runs a mise task
 
 ### Releasing
 
-One-time setup:
+Nothing builds or releases automatically, not on save, commit or push. Releases are made from your Mac:
 
 ```bash
-mise run keystore:gen   # creates .secrets/release.jks and writes fnox.local.toml
-mise run secrets:push   # uploads signing secrets to GitHub Actions
+mise run release          # next patch version (see: mise run version:next)
+mise run release 0.6.0    # or a version you choose
 ```
 
-Back up `.secrets/` and `fnox.local.toml`: if the key is lost, installed copies can no longer be updated.
+This lints, builds and signs the APK locally, tags `vX.Y.Z`, and publishes the GitHub release that Obtainium reads. From Tilt, use the **release** button (with an optional version box) or `mise run tilt:release [x.y.z]`.
 
-Each release:
+One-time setup: `mise run keystore:gen` creates the signing key in `.secrets/` and `fnox.local.toml`. Back both up: if the key is lost, installed copies can no longer be updated.
+
+Fallback: `mise run release:ci [x.y.z]` has GitHub Actions build and publish instead. It needs `mise run secrets:push` once. The Build and Release workflows only run when started by hand.
+
+### Phone
 
 ```bash
-mise run release 0.2.0   # tags v0.2.0 and pushes; Actions builds, signs, and publishes the APK
+mise run phone:pair <ip:port> <code>   # once, from Wireless debugging -> Pair device with pairing code
+mise run phone:connect                 # finds the paired phone on Wi-Fi
+mise run install                       # release-signed build, installs over the Obtainium copy
 ```
-
-The app's version name comes from the tag and its version code from the Actions run number, so every release is a valid upgrade.

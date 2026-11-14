@@ -1,77 +1,43 @@
 load('ext://uibutton', 'cmd_button', 'text_input')
-# Tilt = a dashboard over the workflow. Every resource just runs a mise task,
-# so Tilt, your terminal and CI all do the same thing.   Start it: mise run tilt:up
 
-watched = ['app/src', 'app/build.gradle.kts', 'build.gradle.kts', 'settings.gradle.kts', 'fnox.toml', 'fnox.local.toml']
+# Tilt is a dashboard over the mise tasks: each resource is a button that runs one task.
+# Nothing runs by itself (not on start, save or commit). Press a button in the UI, or run
+# `mise run tilt:<resource>` from a terminal. Start it with: mise run tilt:up
 
-local_resource(
-    'env-check',
-    cmd='fnox check',
-    deps=['fnox.toml', 'fnox.local.toml'],
-    labels=['setup'],
-)
-
-local_resource(
-    'lint',
-    cmd='mise run lint',
-    deps=watched,
-    resource_deps=['env-check'],
-    labels=['quality'],
-)
-
-local_resource(
-    'build',
-    cmd='mise run build',
-    deps=watched,
-    resource_deps=['env-check'],
-    labels=['build'],
-)
-
-# Manual buttons (click the trigger in the Tilt UI, nothing runs automatically).
-local_resource(
-    'build-release',
-    cmd='mise run build:release',
-    trigger_mode=TRIGGER_MODE_MANUAL,
-    auto_init=False,
-    labels=['release'],
-)
-
-local_resource(
-    'install-on-device',
-    cmd='mise run install',
-    trigger_mode=TRIGGER_MODE_MANUAL,
-    auto_init=False,
-    labels=['device'],
-)
-
-local_resource(
-    'secrets-push',
-    cmd='mise run secrets:push',
-    trigger_mode=TRIGGER_MODE_MANUAL,
-    auto_init=False,
-    labels=['release'],
-)
-
-# Release: type a version in the button's field and click it. Tags vX.Y.Z and pushes;
-# GitHub Actions then builds, signs and publishes the APK for Obtainium.
-# Order for the very first release: run `secrets-push` once, then the release button.
 config.define_string('version')
 cfg = config.parse()
-version = cfg.get('version', '')
+version = cfg.get('version', '')  # set by `mise run tilt:release <x.y.z>`; empty = next patch
 
-local_resource(
-    'release',
-    cmd=('mise run release %s' % version) if version else 'echo "Set a version: mise run tilt:release 0.1.0 (or use the Release button)"; exit 1',
-    trigger_mode=TRIGGER_MODE_MANUAL,
-    auto_init=False,
-    labels=['release'],
-)
 
-cmd_button(
-    name='release-button',
-    resource='release',
-    icon_name='rocket_launch',
-    text='Release',
-    argv=['sh', '-c', 'mise run release "$VERSION"'],
-    inputs=[text_input('VERSION', label='Version (x.y.z)', placeholder='e.g. 0.2.0')],
-)
+def task(name, cmd, label):
+    local_resource(name, cmd=cmd, labels=[label], trigger_mode=TRIGGER_MODE_MANUAL, auto_init=False)
+
+
+# setup
+task('env-check', 'fnox check', 'setup')
+task('secrets-push', 'mise run secrets:push', 'setup')
+
+# quality / build
+task('lint', 'mise run lint', 'quality')
+task('build', 'mise run build', 'build')
+task('build-release', 'mise run build:release', 'build')
+
+# phone
+task('devices', 'mise run devices', 'phone')
+task('phone-connect', 'mise run phone:connect', 'phone')
+task('install', 'mise run install', 'phone')
+
+# release: local is the normal path; release-ci asks GitHub Actions to do it instead.
+task('release', 'mise run release %s' % version, 'release')
+task('release-ci', 'mise run release:ci %s' % version, 'release')
+
+# Version box on the release buttons; leave empty for the next patch version.
+for res, script in [('release', 'release'), ('release-ci', 'release:ci')]:
+    cmd_button(
+        name='%s-version' % res,
+        resource=res,
+        icon_name='rocket_launch',
+        text='Release version',
+        argv=['sh', '-c', 'mise run %s "$VERSION"' % script],
+        inputs=[text_input('VERSION', label='Version (x.y.z)', placeholder='empty = next patch')],
+    )
