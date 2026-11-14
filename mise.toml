@@ -85,3 +85,9 @@ tilt trigger release
 description = "Show Tilt logs (no follow): mise run tilt:logs [resource]"
 usage = 'arg "[resource]" help="Resource name; all if omitted"'
 run = 'tilt logs --since 10m ${usage_resource:-}'
+
+[tasks."tilt:status"]
+description = "Show status of every Tilt resource"
+run = '''
+tilt get uiresource -o json | jq -r '.items[] | select(.metadata.name != "(Tiltfile)") | [.metadata.name, (.status.updateStatus // "-"), (if (.status.buildHistory[0].error // "") != "" then "FAILED: " + .status.buildHistory[0].error else "ok/none" end), (.status.buildHistory[0].finishTime // "never")] | @tsv' | column -t -s "$(printf '\t')"
+'''
