@@ -70,10 +70,22 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme(primary = Accent, background = Background, surface = Background)) {
                 Surface(Modifier.fillMaxSize(), color = Background) {
                     val vm: JarvisViewModel = viewModel()
-                    if (vm.apiKey.isNullOrBlank() || vm.editingKey) KeyScreen(vm) else ChatScreen(vm)
+                    when {
+                        vm.apiKey.isNullOrBlank() || vm.editingKey -> KeyScreen(vm)
+                        vm.showActiveSettings -> ActiveScreen(vm)
+                        else -> ChatScreen(vm)
+                    }
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Active mode can only (re)start while the app is in front, e.g. after a reboot.
+        val settings = Settings(this)
+        val mic = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        if (settings.activeEnabled && mic && !ActiveModeService.running) ActiveModeService.start(this)
     }
 }
 
@@ -145,6 +157,7 @@ private fun ChatScreen(vm: JarvisViewModel) {
             Box {
                 TextButton(onClick = { menu = true }) { Text("Settings") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text("Active mode") }, onClick = { menu = false; vm.showActiveSettings = true })
                     DropdownMenuItem(text = { Text("Change API key") }, onClick = { menu = false; vm.editingKey = true })
                     DropdownMenuItem(text = { Text("Forget conversation") }, onClick = { menu = false; confirmForget = true })
                 }

@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Jarvis</string>
+    <string name="app_watcher_label">Jarvis active mode</string>
+    <string name="app_watcher_description">Lets Jarvis notice when you open an app, so it can speak up with reminders. It only reads which app is in front, never what is on screen.</string>
 </resources>

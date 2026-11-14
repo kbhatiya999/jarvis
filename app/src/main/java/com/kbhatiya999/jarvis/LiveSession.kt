@@ -21,6 +21,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * One Gemini Live API session over a WebSocket: streams mic audio (16 kHz PCM) up,
@@ -135,6 +136,9 @@ class LiveSession(
         if (ready) ws?.send(JSONObject().put("realtimeInput", JSONObject().put("audioStreamEnd", true)).toString())
     }
 
+    /** How much of Jarvis's reply is still to be heard, in milliseconds. */
+    fun playbackRemainingMs(): Long = player.remainingMs()
+
     fun close() {
         recording = false
         ws?.close(1000, "bye")
@@ -212,6 +216,7 @@ class LiveSession(
     /** Streams PCM chunks to the speaker on its own thread. */
     private class Player {
         private val queue = LinkedBlockingQueue<ByteArray>()
+        private val enqueuedFrames = AtomicLong(0)
         @Volatile private var running = true
         private val track = AudioTrack.Builder()
             .setAudioAttributes(
@@ -245,7 +250,16 @@ class LiveSession(
         }.apply { name = "jarvis-speaker"; start() }
 
         fun play(pcm: ByteArray) {
-            if (running) queue.offer(pcm)
+            if (!running) return
+            enqueuedFrames.addAndGet(pcm.size / 2L)
+            queue.offer(pcm)
+        }
+
+        @Synchronized
+        fun remainingMs(): Long {
+            if (!running) return 0
+            val played = track.playbackHeadPosition.toLong() and 0xffffffffL
+            return maxOf(0L, (enqueuedFrames.get() - played) * 1000 / OUT_RATE)
         }
 
         @Synchronized
@@ -254,6 +268,7 @@ class LiveSession(
             queue.clear()
             track.pause()
             track.flush()
+            enqueuedFrames.set(0)
             track.play()
         }
 

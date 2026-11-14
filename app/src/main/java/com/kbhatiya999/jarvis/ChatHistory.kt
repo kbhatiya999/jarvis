@@ -5,7 +5,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-data class Message(val role: String, val text: String, val time: Long = System.currentTimeMillis()) {
+data class Message(
+    val role: String,
+    val text: String,
+    val time: Long = System.currentTimeMillis(),
+    val id: Long = 0,
+) {
     val fromUser get() = role == USER
 
     companion object {

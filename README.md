@@ -7,6 +7,10 @@ A voice assistant in the J.A.R.V.I.S. persona, built on the Gemini Live API. It'
 - On first launch it asks for a Gemini API key. Get one at [Google AI Studio](https://aistudio.google.com/api-keys) and paste it in. The key is stored only on the phone, encrypted with the Android Keystore. Change it any time under **Settings → Change API key**.
 - Tap **Talk** to speak, or type a message. Jarvis replies by voice (voice "Charon"), and both sides show up as text.
 - The conversation is saved on the phone and fed back to Jarvis at the start of each session, so it remembers earlier chats. **Settings → Forget conversation** wipes it.
+- **Active mode** (Settings → Active mode): when you open an app, Jarvis speaks up on its own. It reminds you about water, junk and oily food, staying warm, and not getting hurt, choosing and combining these itself. It then listens for 5 seconds and stops if you stay silent. Setup:
+  1. Turn on "Jarvis active mode" under Accessibility. If it's greyed out, go to App info → ⋮ → Allow restricted settings first.
+  2. Flip the Active mode switch. A "Jarvis active" notification stays while it runs.
+  - It speaks at most once per cooldown (30 min by default). It stays silent during quiet hours (11 pm–7 am), calls, Do Not Disturb, silent mode, and on the lock screen.
 
 ## Install with Obtainium
 
