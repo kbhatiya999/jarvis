@@ -80,3 +80,8 @@ tilt args -- --version "${usage_version}"
 sleep 6   # let Tilt reload the Tiltfile with the new version
 tilt trigger release
 '''
+
+[tasks."tilt:logs"]
+description = "Show Tilt logs (no follow): mise run tilt:logs [resource]"
+usage = 'arg "[resource]" help="Resource name; all if omitted"'
+run = 'tilt logs --since 10m ${usage_resource:-}'
