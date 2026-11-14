@@ -1,0 +1,54 @@
+min_version = "2026.1.0"
+
+[tools]
+java = "17"
+gradle = "8.10.2"
+tilt = "latest"
+fnox = "latest"
+gh = "latest"
+
+# Every task runs through fnox so env (fnox.toml + fnox.local.toml) is always loaded.
+# Needs an Android SDK locally (ANDROID_HOME); CI has one built in.
+
+[tasks.build]
+description = "Build the debug APK"
+run = "scripts/run.sh ./gradlew --no-daemon assembleDebug"
+sources = ["app/src/**/*", "app/build.gradle.kts", "build.gradle.kts", "settings.gradle.kts"]
+outputs = ["app/build/outputs/apk/debug/app-debug.apk"]
+
+[tasks."build:release"]
+description = "Build the signed release APK (needs signing vars from fnox.local.toml)"
+run = "scripts/build-release.sh"
+
+[tasks.lint]
+description = "Run Android lint"
+run = "scripts/run.sh ./gradlew --no-daemon lint"
+
+[tasks.clean]
+description = "Remove build outputs"
+run = "./gradlew clean"
+
+[tasks.install]
+description = "Install the debug APK on a connected device/emulator"
+depends = ["build"]
+run = "adb install -r app/build/outputs/apk/debug/app-debug.apk"
+
+[tasks."keystore:gen"]
+description = "Create a release keystore and store its details in fnox.local.toml (plain text)"
+run = "scripts/gen-keystore.sh"
+
+[tasks."secrets:push"]
+description = "Upload signing secrets from fnox.local.toml to GitHub Actions secrets"
+run = "scripts/push-secrets.sh"
+
+[tasks.release]
+description = "Tag and push a release: mise run release 0.2.0 (CI builds and publishes the APK)"
+run = "scripts/release.sh"
+
+[tasks."tilt:up"]
+description = "Open the Tilt dashboard for the workflow"
+run = "tilt up"
+
+[tasks."tilt:down"]
+description = "Stop Tilt"
+run = "tilt down"

@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+
+      - name: Decode signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/keys/release.jks"
+          echo "SIGNING_KEYSTORE_PATH=$RUNNER_TEMP/keys/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build signed APK
+        env:
+          APP_VERSION: ${{ github.ref_name }}
+          APP_VERSION_CODE: ${{ github.run_number }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: mise run build:release
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk "jarvis-${GITHUB_REF_NAME}.apk"
+          gh release create "$GITHUB_REF_NAME" "jarvis-${GITHUB_REF_NAME}.apk" \
+            --title "Jarvis ${GITHUB_REF_NAME#v}" --generate-notes

@@ -1,0 +1,13 @@
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+
+# local env overrides and secrets (plain text!)
+fnox.local.toml
+.secrets/
+*.jks
+*.keystore
