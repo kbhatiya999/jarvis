@@ -50,3 +50,23 @@ local_resource(
     auto_init=False,
     labels=['release'],
 )
+
+# Release: type a version in the button's field and click it. Tags vX.Y.Z and pushes;
+# GitHub Actions then builds, signs and publishes the APK for Obtainium.
+# Order for the very first release: run `secrets-push` once, then the release button.
+local_resource(
+    'release',
+    cmd='echo "Use the Release button (version field) on this resource."',
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    auto_init=False,
+    labels=['release'],
+)
+
+cmd_button(
+    name='release-button',
+    resource='release',
+    icon_name='rocket_launch',
+    text='Release',
+    argv=['sh', '-c', 'mise run release "$VERSION"'],
+    inputs=[text_input('VERSION', label='Version (x.y.z)', default='0.1.0')],
+)
