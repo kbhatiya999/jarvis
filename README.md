@@ -1,6 +1,6 @@
 # Jarvis
 
-A voice assistant in the J.A.R.V.I.S. persona, built on the Gemini Live API. It's distributed through GitHub Releases and installable/updatable with [Obtainium](https://obtainium.imranr.dev/).
+A voice assistant in the J.A.R.V.I.S. persona, built on the Gemini Live API, for Android and iPhone. Both apps share their logic (memory, reminders, encrypted Jarvis-to-Jarvis messaging, the Gemini protocol) through a Kotlin Multiplatform module, so an Android Jarvis and an iPhone Jarvis can message each other. Releases are on GitHub: Android installs and updates with [Obtainium](https://obtainium.imranr.dev/), iPhone with AltStore or SideStore.
 
 ## Using it
 
@@ -30,6 +30,20 @@ A voice assistant in the J.A.R.V.I.S. persona, built on the Gemini Live API. It'
 
 Every release is signed with the same key, so updates install over the existing app without losing data.
 
+## Install on iPhone (AltStore / SideStore)
+
+There's no Obtainium on iOS, and TestFlight needs a paid Apple developer account. The free route:
+
+1. Install [AltStore](https://altstore.io/) or [SideStore](https://sidestore.io/) on the iPhone. They install apps with your own free Apple ID.
+2. In it, add this source (Sources → +): `https://github.com/kbhatiya999/jarvis/releases/latest/download/altstore-source.json`
+3. Install Jarvis from that source. It offers updates when a new release comes out.
+
+A free Apple ID signs apps for 7 days. AltStore/SideStore re-sign Jarvis in the background (or tap Refresh) so it keeps opening.
+
+Differences on iPhone:
+- **No active mode.** iOS doesn't let an app see which app you open, or start the mic from the background.
+- **Messages from other Jarvises** arrive live while Jarvis is open. In the background, iOS checks only now and then, and you get a notification. Waiting messages are said aloud when you open Jarvis.
+
 ## Develop
 
 Tools come from [mise](https://mise.jdx.dev/), including the Android SDK. Env and secrets come from [fnox](https://fnox.jdx.dev/). [Tilt](https://tilt.dev/) runs and shows the workflow.
@@ -47,11 +61,12 @@ In Tilt, resources are grouped into:
 
 | Group | Resources |
 |---|---|
-| pipelines | **release** (release-check → lint → build → release-publish) |
+| pipelines | **release** (release-check → lint → test → build → ios-release-build → release-publish) |
 | setup | setup, env-check, keystore-gen, secrets-push |
-| build | lint, build, build-ci |
+| build | lint, test, build, build-ci |
 | phone | devices, phone-pair, phone-connect, install |
-| release | release-check, release-publish, release-ci |
+| release | release-check, ios-release-build, release-publish, release-ci |
+| ios | ios-build, ios-sim |
 
 A pipeline presses its steps in order and stops at the first failure. Each step keeps its own log and status.
 
@@ -97,6 +112,19 @@ The `-ci` tasks push your local `main` first (GitHub builds what's on GitHub), t
 Edit the code on github.com (or github.dev) and commit to `main`. Then go to **Actions → Release → Run workflow** in the GitHub website or app, optionally with a version. It runs the same scripts as `tilt:release` (release-check → lint → build → release-publish), signed with the same key, and publishes the release Obtainium reads. **Actions → Build** makes a dev APK without releasing; download the `jarvis-apk` artifact, a zip with the APK inside.
 
 Both workflows are manual only; nothing runs on push. They need the signing key in the repo's secrets: run `mise run tilt:secrets-push` once from the Mac, and again if the key changes.
+
+### iOS
+
+```bash
+mise run tilt:ios-sim      # build and run in the iPhone simulator
+mise run tilt:ios-build    # unsigned .ipa in ios/build/ (for AltStore/SideStore)
+```
+
+Both need Xcode (App Store; open it once, then `sudo xcode-select -s /Applications/Xcode.app`). mise provides everything else, including XcodeGen, which generates `ios/Jarvis.xcodeproj` from `ios/project.yml`. The project isn't committed. The iOS app is SwiftUI in `ios/Jarvis/`, on the shared Kotlin module in `shared/`, which Xcode builds as `JarvisCore.framework`.
+
+Releases include the iOS app when it can be built: always on GitHub (`tilt:release-ci`, or the Release workflow, on a macOS runner), and from this Mac once Xcode is installed. Without Xcode, `tilt:release` publishes Android only and says so.
+
+To install on your own iPhone straight from Xcode with a free Apple ID: open the generated project, pick your team under Signing & Capabilities, and run. That copy also expires after 7 days.
 
 ### Phone
 
