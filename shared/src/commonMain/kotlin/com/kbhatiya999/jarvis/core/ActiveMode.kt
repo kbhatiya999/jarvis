@@ -50,6 +50,28 @@ class ActiveMode internal constructor(private val jarvis: Jarvis) {
         get() = store.get(WAKE) == "true"
         set(v) = store.set(WAKE, v.toString())
 
+    /** Voice commands rest from 11 pm to 7 am (unless charging), to save battery. */
+    var wakePauseAtNight: Boolean
+        get() = store.get(WAKE_NIGHT) != "false"
+        set(v) = store.set(WAKE_NIGHT, v.toString())
+
+    /** Voice commands rest below this battery percentage (unless charging). 0 = never. */
+    var wakeMinBattery: Int
+        get() = store.get(WAKE_MIN_BATTERY)?.toIntOrNull() ?: DEFAULT_WAKE_MIN_BATTERY
+        set(v) = store.set(WAKE_MIN_BATTERY, v.coerceIn(0, 100).toString())
+
+    /**
+     * Why voice commands should rest right now to save battery, or null to listen. Charging always listens
+     * (it costs nothing then).
+     */
+    fun wakePauseReason(hour: Int, batteryPercent: Int, charging: Boolean, batterySaver: Boolean): String? = when {
+        charging -> null
+        batterySaver -> "Battery Saver is on"
+        wakeMinBattery > 0 && batteryPercent in 0 until wakeMinBattery -> "battery below $wakeMinBattery%"
+        wakePauseAtNight && (hour >= 23 || hour < 7) -> "night (11 pm–7 am)"
+        else -> null
+    }
+
     /** What Jarvis says on "Jarvis wake up" (one picked at random). */
     var wakeLines: List<String>
         get() = lines(WAKE_LINES, DEFAULT_WAKE_LINES)
@@ -105,6 +127,9 @@ class ActiveMode internal constructor(private val jarvis: Jarvis) {
         private val INTERRUPT_MODES = setOf(INTERRUPT_NAME, INTERRUPT_ANY, INTERRUPT_NEVER)
         val DEFAULT_WAKE_LINES = listOf("At your service, Sir.", "Yes, Sir?", "Listening.")
         val DEFAULT_POWER_LINES = listOf("Powering down, Sir.", "Standing by.", "As you wish.")
+        const val DEFAULT_WAKE_MIN_BATTERY = 20
+        private const val WAKE_NIGHT = "wake_pause_night"
+        private const val WAKE_MIN_BATTERY = "wake_min_battery"
         private const val INTERRUPT_MODE = "interrupt_mode"
         private const val WAKE = "wake_enabled"
         private const val WAKE_LINES = "wake_lines"

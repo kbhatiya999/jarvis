@@ -52,6 +52,14 @@ class ActiveModeService : Service() {
     private lateinit var clips: Clips
     // "That's enough": end once Jarvis's goodbye has played instead of listening again.
     private var endAfterTurn = false
+    // Why voice commands are resting to save battery (night, low battery, Battery Saver), or null.
+    private var wakePaused: String? = null
+    private val power = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) = refreshWake()
+    }
+    private val recheckWake: Runnable = Runnable { refreshWake() }
+    private var destroyed = false
+    private var shownText: String? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -75,12 +83,26 @@ class ActiveModeService : Service() {
         jarvis.onMessageArrived = { messageArrived() }
         jarvis.relay.acquireStream()
         streaming = true
+        val filter = android.content.IntentFilter().apply {
+            addAction(Intent.ACTION_BATTERY_CHANGED)
+            addAction(Intent.ACTION_POWER_CONNECTED)
+            addAction(Intent.ACTION_POWER_DISCONNECTED)
+            addAction(android.os.PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
+        }
+        registerReceiver(power, filter)
         refreshWake()
     }
 
     /** Starts or stops listening for "Jarvis ..." to match the setting (and the model being there). */
     private fun refreshWake() {
-        val want = jarvis.active.wakeEnabled && WakeListener.Models.ready(this)
+        if (instance !== this || destroyed) return
+        main.removeCallbacks(recheckWake)
+        val on = jarvis.active.wakeEnabled && WakeListener.Models.ready(this)
+        wakePaused = if (on) pauseReason() else null
+        // Night starts and ends on the clock: look again in a while.
+        if (on) main.postDelayed(recheckWake, WAKE_RECHECK_MS)
+        // Never stop mid-conversation: "Jarvis power down" must keep working. end() looks again.
+        val want = on && (wakePaused == null || session != null)
         if (want && wake == null) {
             wake = WakeListener(
                 this,
@@ -97,7 +119,21 @@ class ActiveModeService : Service() {
         if (session == null) update(idleText())
     }
 
-    private fun idleText() = if (wake != null) "Say \"Jarvis wake up\"" else "Watching for app launches"
+    private fun idleText() = when {
+        wake != null -> "Say \"Jarvis wake up\""
+        wakePaused != null -> "Voice commands resting: $wakePaused"
+        else -> "Watching for app launches"
+    }
+
+    private fun pauseReason(): String? {
+        val battery = registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = battery?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = battery?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100) ?: 100
+        val percent = if (level < 0 || scale <= 0) -1 else level * 100 / scale
+        val charging = (battery?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
+        val saver = getSystemService(android.os.PowerManager::class.java).isPowerSaveMode
+        return jarvis.active.wakePauseReason(Calendar.getInstance().get(Calendar.HOUR_OF_DAY), percent, charging, saver)
+    }
 
     /** "Jarvis wake up": Jarvis answers at once (a clip, no network), then listens. Also on the lock screen. */
     private fun wakePhrase() {
@@ -157,6 +193,9 @@ class ActiveModeService : Service() {
     }
 
     override fun onDestroy() {
+        destroyed = true
+        main.removeCallbacks(recheckWake)
+        if (instance === this) try { unregisterReceiver(power) } catch (e: IllegalArgumentException) { }
         wake?.stop()
         wake = null
         clips.stop()
@@ -339,7 +378,7 @@ class ActiveModeService : Service() {
         writer?.closeTurn()
         endAfterTurn = false
         abandonFocus()
-        if (instance === this) update(idleText())
+        if (instance === this) refreshWake()
     }
 
     private fun appLabel(pkg: String): String = try {
@@ -394,6 +433,8 @@ class ActiveModeService : Service() {
     }
 
     private fun update(text: String) {
+        if (text == shownText) return // battery updates call this often
+        shownText = text
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(text))
     }
 
@@ -406,6 +447,7 @@ class ActiveModeService : Service() {
         private const val ACTION_TALK = "com.kbhatiya999.jarvis.TALK"
         private const val ACTION_REFRESH = "com.kbhatiya999.jarvis.REFRESH_WAKE"
         private const val END_FALLBACK_MS = 8_000L
+        private const val WAKE_RECHECK_MS = 5 * 60_000L
 
         private const val REPLY_WAIT_MS = 10_000L
         private const val VOICE_RECENT_MS = 1_500L

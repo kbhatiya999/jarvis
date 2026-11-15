@@ -91,6 +91,8 @@ fun ActiveScreen(vm: JarvisViewModel) {
     var listen by remember { mutableStateOf(settings.listenSeconds) }
     var locked by remember { mutableStateOf(settings.speakWhenLocked) }
     var interruptMode by remember { mutableStateOf(settings.interruptMode) }
+    var restAtNight by remember { mutableStateOf(vm.jarvis.active.wakePauseAtNight) }
+    var minBattery by remember { mutableStateOf(vm.jarvis.active.wakeMinBattery) }
 
     // Re-check after coming back from system settings.
     LifecycleResumeEffect(Unit) {
@@ -264,6 +266,30 @@ fun ActiveScreen(vm: JarvisViewModel) {
         vm.wakeError?.let { Text(it, fontSize = 13.sp, color = Color(0xFFE57373)) }
         if (vm.wakeOn) {
             OutlinedButton(onClick = { vm.screen = "voice" }) { Text("Jarvis's replies") }
+            Text("Save battery", fontWeight = FontWeight.Bold)
+            Text("Voice commands rest at these times, and always listen while charging. Battery Saver also rests them.", fontSize = 13.sp, color = Color.Gray)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Rest at night (11 pm–7 am)", Modifier.weight(1f))
+                Switch(checked = restAtNight, onCheckedChange = {
+                    restAtNight = it
+                    vm.jarvis.active.wakePauseAtNight = it
+                    ActiveModeService.refreshWake(context)
+                })
+            }
+            Text("Rest when battery is below")
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(0, 15, 20, 30, 50).forEach { pct ->
+                    FilterChip(
+                        selected = minBattery == pct,
+                        onClick = {
+                            minBattery = pct
+                            vm.jarvis.active.wakeMinBattery = pct
+                            ActiveModeService.refreshWake(context)
+                        },
+                        label = { Text(if (pct == 0) "Never" else "$pct%") },
+                    )
+                }
+            }
         }
 
         Text("Cutting Jarvis off", fontWeight = FontWeight.Bold)

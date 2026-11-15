@@ -35,6 +35,8 @@ class ActiveModeTest {
         assertFalse(active.interruptible)
         assertEquals(ActiveMode.INTERRUPT_NAME, active.interruptMode)
         assertFalse(active.wakeEnabled)
+        assertTrue(active.wakePauseAtNight)
+        assertEquals(20, active.wakeMinBattery)
         assertEquals(ActiveMode.DEFAULT_WAKE_LINES, active.wakeLines)
         store.map.putAll(saved)
     }
@@ -74,5 +76,20 @@ class ActiveModeTest {
         reset()
         assertContains(active.appOpenedPrompt("Instagram", "9:00 AM", canListen = false), "don't ask questions")
         assertContains(active.appOpenedPrompt("Instagram", "9:00 AM"), "converse naturally")
+    }
+
+    @Test
+    fun voiceCommandsRestToSaveBattery() {
+        active.wakePauseAtNight = true
+        active.wakeMinBattery = 20
+        assertEquals(null, active.wakePauseReason(hour = 12, batteryPercent = 80, charging = false, batterySaver = false))
+        assertEquals("night (11 pm–7 am)", active.wakePauseReason(23, 80, charging = false, batterySaver = false))
+        assertEquals("battery below 20%", active.wakePauseReason(12, 19, charging = false, batterySaver = false))
+        assertEquals("Battery Saver is on", active.wakePauseReason(12, 80, charging = false, batterySaver = true))
+        // Charging always listens.
+        assertEquals(null, active.wakePauseReason(2, 5, charging = true, batterySaver = true))
+        active.wakePauseAtNight = false
+        active.wakeMinBattery = 0
+        assertEquals(null, active.wakePauseReason(2, 5, charging = false, batterySaver = false))
     }
 }

@@ -16,7 +16,7 @@ class AndroidAudio : AudioIO {
     @Synchronized
     override fun startCapture(onChunk: (ByteArray) -> Unit) {
         if (listener != null) return
-        listener = onChunk.also { MicHub.add(it) }
+        listener = onChunk.also { MicHub.add(it, echoCancel = true) }
     }
 
     @Synchronized
