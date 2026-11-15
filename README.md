@@ -48,19 +48,19 @@ In Tilt, resources are grouped into:
 | Group | Resources |
 |---|---|
 | pipelines | **release** (release-check → lint → build → release-publish) |
-| setup | setup, env-check, keystore-gen |
+| setup | setup, env-check, keystore-gen, secrets-push |
 | build | lint, build |
 | phone | devices, phone-pair, phone-connect, install |
 | release | release-check, release-publish |
 
 A pipeline presses its steps in order and stops at the first failure. Each step keeps its own log and status.
 
-**There is one way to make an APK: the `build` step.** It is always signed with the release key, and both `release` and `install` use it. So a copy from Obtainium and a copy installed from your Mac can update each other. Only the version name differs:
+**There is one way to make an APK: the `build` step** (`scripts/build.sh`). It is always signed with the release key. `release` and `install` use it, and so do the GitHub workflows below. So a copy from Obtainium and a copy installed from your Mac can update each other. Only the version name differs:
 
 | Made by | Version name |
 |---|---|
-| `tilt:release 0.6.0` | `v0.6.0` |
-| `tilt:install` / `tilt:build` | `v0.6.0-dev+<commit>` (latest release + the commit; `.dirty` if uncommitted changes) |
+| `tilt:release 0.6.0` or the GitHub **Release** workflow | `v0.6.0` |
+| `tilt:install`, `tilt:build` or the GitHub **Build** workflow | `v0.6.0-dev+<commit>` (latest release + the commit; `.dirty` if uncommitted changes) |
 
 After a dev install, Obtainium may show the latest release as an update. That's expected, and the next release installs normally.
 
@@ -81,7 +81,11 @@ Everything happens on your Mac. It checks you're on `main` with a clean tree and
 
 One-time setup: `mise run tilt:keystore-gen` creates the signing key in `.secrets/` and `fnox.local.toml`. Back both up: if the key is lost, installed copies can no longer be updated.
 
-There is no CI: GitHub only hosts the code and the releases.
+#### Without the Mac (from GitHub only)
+
+Edit the code on github.com (or github.dev) and commit to `main`. Then go to **Actions → Release → Run workflow** in the GitHub website or app, optionally with a version. It runs the same scripts as `tilt:release` (release-check → lint → build → release-publish), signed with the same key, and publishes the release Obtainium reads. **Actions → Build** makes a dev APK without releasing; download the `jarvis-apk` artifact, a zip with the APK inside.
+
+Both workflows are manual only; nothing runs on push. They need the signing key in the repo's secrets: run `mise run tilt:secrets-push` once from the Mac, and again if the key changes.
 
 ### Phone
 

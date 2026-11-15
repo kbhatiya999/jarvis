@@ -1,0 +1,48 @@
+name: Release
+
+# Release without the Mac, e.g. from the GitHub app or website: Actions -> Release -> Run workflow.
+# Runs the same scripts as `mise run tilt:release` (check -> lint -> build -> publish), signed
+# with the same key (repo secrets, uploaded by `mise run tilt:secrets-push`). Manual only.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version (x.y.z). Empty = next patch.
+        required: false
+
+permissions:
+  contents: write
+
+concurrency: release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+      SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+      SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: jdx/mise-action@v2
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+        run: |
+          [ -n "$KEYSTORE_B64" ] || { echo "Repo secrets missing; run: mise run tilt:secrets-push"; exit 1; }
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "SIGNING_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: release-check
+        run: scripts/tilt-input.sh version "${{ inputs.version }}" && mise run -q release:check
+      - name: lint
+        run: mise run -q lint
+      - name: build
+        run: mise run -q build
+      - name: release-publish
+        run: mise run -q release:publish

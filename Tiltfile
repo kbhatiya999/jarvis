@@ -5,8 +5,9 @@ load('ext://uibutton', 'cmd_button', 'text_input')
 #   steps      one resource per job; each runs one hidden mise task
 #   pipelines  press steps in order and stop at the first failure (release)
 #
-# There is one way to make an APK: the build step (signed with the release key). release and
-# install both use it, so every copy on any phone can update any other.
+# There is one way to make an APK: the build step (scripts/build.sh, signed with the release
+# key). release and install use it, and so do the GitHub workflows (Release, Build) for when
+# the Mac isn't around, so every copy on any phone can update any other.
 #
 # Nothing runs by itself: not on start, save or commit. Press a button here, or run
 # `mise run tilt:<name>` in a terminal: it presses the same button, streams the log and
@@ -33,6 +34,7 @@ def pipeline(name, steps):
 step('setup', 'setup', 'setup')
 step('env-check', 'env:check', 'setup')
 step('keystore-gen', 'keystore:gen', 'setup')
+step('secrets-push', 'secrets:push', 'setup')
 
 step('lint', 'lint', 'build')
 step('build', 'build', 'build')

@@ -95,6 +95,10 @@ run = "scripts/tilt-run.sh setup"
 description = "Create the release signing key (once)"
 run = "scripts/tilt-run.sh keystore-gen"
 
+[tasks."tilt:secrets-push"]
+description = "Copy the signing key to GitHub secrets (for the Release/Build workflows)"
+run = "scripts/tilt-run.sh secrets-push"
+
 # ================================================================ steps (hidden; run by Tilt)
 
 [tasks.setup]
@@ -111,6 +115,11 @@ run = "fnox check"
 hide = true
 description = "Create the release signing key once; details go to fnox.local.toml (plain text)"
 run = "scripts/gen-keystore.sh"
+
+[tasks."secrets:push"]
+hide = true
+description = "Copy signing settings from fnox.local.toml to GitHub Actions secrets"
+run = "scripts/push-secrets.sh"
 
 [tasks.lint]
 hide = true

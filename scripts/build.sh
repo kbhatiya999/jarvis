@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Step: build the signed APK. This is the only way Jarvis APKs are made; releases and phone
-# installs both use it, signed with the same key, so any copy can update any other.
+# Step: build the signed APK. This is the only way Jarvis APKs are made: releases (from the
+# Mac or GitHub Actions) and phone installs all use it, signed with the same key, so any copy can update any other.
 # Version name: the release in progress (.tilt-inputs/version) as "vX.Y.Z", otherwise a dev
 # build as "vX.Y.Z-dev+<commit>" (X.Y.Z = latest release; ".dirty" for uncommitted changes).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-KS="$(fnox get SIGNING_KEYSTORE_PATH)"
+KS="${SIGNING_KEYSTORE_PATH:-$(fnox get SIGNING_KEYSTORE_PATH)}"  # GitHub Actions sets it
 [ -n "$KS" ] || { echo "No signing key. Run: mise run tilt:keystore-gen" >&2; exit 1; }
 v="$(cat .tilt-inputs/version 2>/dev/null || true)"
 if [ -n "$v" ]; then

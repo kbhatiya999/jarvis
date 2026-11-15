@@ -10,3 +10,4 @@ SIGNING_KEYSTORE_PATH = { default = "", description = "Path to the release keyst
 SIGNING_STORE_PASSWORD = { default = "", description = "Keystore password; set in fnox.local.toml", if_missing = "ignore" }
 SIGNING_KEY_ALIAS = { default = "jarvis", description = "Key alias in the keystore", if_missing = "ignore" }
 SIGNING_KEY_PASSWORD = { default = "", description = "Key password; set in fnox.local.toml", if_missing = "ignore" }
+SIGNING_KEYSTORE_B64 = { default = "", description = "Base64 keystore, copied to GitHub secrets by `mise run tilt:secrets-push`", if_missing = "ignore" }
