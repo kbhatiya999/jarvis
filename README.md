@@ -49,9 +49,9 @@ In Tilt, resources are grouped into:
 |---|---|
 | pipelines | **release** (release-check → lint → build → release-publish) |
 | setup | setup, env-check, keystore-gen, secrets-push |
-| build | lint, build |
+| build | lint, build, build-ci |
 | phone | devices, phone-pair, phone-connect, install |
-| release | release-check, release-publish |
+| release | release-check, release-publish, release-ci |
 
 A pipeline presses its steps in order and stops at the first failure. Each step keeps its own log and status.
 
@@ -59,8 +59,8 @@ A pipeline presses its steps in order and stops at the first failure. Each step 
 
 | Made by | Version name |
 |---|---|
-| `tilt:release 0.6.0` or the GitHub **Release** workflow | `v0.6.0` |
-| `tilt:install`, `tilt:build` or the GitHub **Build** workflow | `v0.6.0-dev+<commit>` (latest release + the commit; `.dirty` if uncommitted changes) |
+| `tilt:release 0.6.0`, `tilt:release-ci 0.6.0` or the GitHub **Release** workflow | `v0.6.0` |
+| `tilt:install`, `tilt:build`, `tilt:build-ci` or the GitHub **Build** workflow | `v0.6.0-dev+<commit>` (latest release + the commit; `.dirty` if uncommitted changes) |
 
 After a dev install, Obtainium may show the latest release as an update. That's expected, and the next release installs normally.
 
@@ -80,6 +80,17 @@ mise run tilt:release 0.6.0    # or a version you choose
 Everything happens on your Mac. It checks you're on `main` with a clean tree and an unused tag, lints, builds and signs the APK, then tags `vX.Y.Z` and publishes the GitHub release that Obtainium reads. In the dashboard, use **release** or its *Release version* button.
 
 One-time setup: `mise run tilt:keystore-gen` creates the signing key in `.secrets/` and `fnox.local.toml`. Back both up: if the key is lost, installed copies can no longer be updated.
+
+#### Local or on GitHub
+
+```bash
+mise run tilt:build              # build on this Mac
+mise run tilt:build-ci           # build on GitHub Actions; APK lands in app/build/outputs/apk/ci/
+mise run tilt:release [x.y.z]    # release from this Mac
+mise run tilt:release-ci [x.y.z] # release on GitHub Actions
+```
+
+The `-ci` tasks push your local `main` first (GitHub builds what's on GitHub), then start the workflow and stream it in Tilt until it finishes.
 
 #### Without the Mac (from GitHub only)
 

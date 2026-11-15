@@ -38,6 +38,7 @@ step('secrets-push', 'secrets:push', 'setup')
 
 step('lint', 'lint', 'build')
 step('build', 'build', 'build')
+step('build-ci', 'build:ci', 'build')  # same build, on GitHub Actions
 
 step('devices', 'devices', 'phone')
 step('phone-pair', 'phone:pair', 'phone')
@@ -46,6 +47,7 @@ step('install', 'install', 'phone')  # dev build -> adb install
 
 step('release-check', 'release:check', 'release')
 step('release-publish', 'release:publish', 'release')
+step('release-ci', 'release:ci', 'release')  # the release pipeline, on GitHub Actions
 
 # ---- pipelines
 # release: everything happens on this Mac; GitHub only stores the release for Obtainium.
@@ -55,6 +57,11 @@ pipeline('release', ['release-check', 'lint', 'build', 'release-publish'])
 cmd_button(
     name='release-with-version', resource='release', icon_name='rocket_launch', text='Release version',
     argv=['sh', '-c', 'scripts/tilt-input.sh version "$VERSION" && tilt trigger release'],
+    inputs=[text_input('VERSION', label='Version (x.y.z)', placeholder='empty = next patch')],
+)
+cmd_button(
+    name='release-ci-with-version', resource='release-ci', icon_name='cloud_upload', text='Release version on GitHub',
+    argv=['sh', '-c', 'scripts/tilt-input.sh version "$VERSION" && tilt trigger release-ci'],
     inputs=[text_input('VERSION', label='Version (x.y.z)', placeholder='empty = next patch')],
 )
 cmd_button(

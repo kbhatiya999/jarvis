@@ -62,6 +62,15 @@ run = "scripts/tilt-run.sh lint"
 description = "Build the signed APK (the only build; release and install use it too)"
 run = "scripts/tilt-run.sh build"
 
+[tasks."tilt:build-ci"]
+description = "Build on GitHub Actions (same script and key); downloads the APK"
+run = "scripts/tilt-run.sh build-ci"
+
+[tasks."tilt:release-ci"]
+description = "Release on GitHub Actions instead of this Mac"
+usage = 'arg "[version]" help="x.y.z; defaults to the next patch"'
+run = 'scripts/tilt-input.sh version "${usage_version:-}" && scripts/tilt-run.sh release-ci'
+
 [tasks."tilt:devices"]
 description = "List phones adb can see"
 run = "scripts/tilt-run.sh devices"
@@ -132,6 +141,16 @@ hide = true
 description = "Signed APK (the one build path)"
 depends = ["setup"]
 run = "scripts/build.sh"
+
+[tasks."build:ci"]
+hide = true
+description = "Run the Build workflow on GitHub and download the APK"
+run = "scripts/ci-run.sh build"
+
+[tasks."release:ci"]
+hide = true
+description = "Run the Release workflow on GitHub"
+run = "scripts/ci-run.sh release"
 
 [tasks.clean]
 hide = true
