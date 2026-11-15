@@ -13,7 +13,8 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     var apiKey by mutableStateOf(keyStore.get())
         private set
     var editingKey by mutableStateOf(false)
-    var showActiveSettings by mutableStateOf(false)
+    /** Which screen is showing over the chat: null, "active", "reminders" or "contacts". */
+    var screen by mutableStateOf<String?>(null)
     val messages get() = Conversation.messages
     var status by mutableStateOf("Standing by")
         private set
@@ -76,7 +77,9 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         status = "Connecting"
         val token = Any().also { currentToken = it }
         writer = Conversation.Writer()
-        return LiveSession(apiKey ?: "", Conversation.systemPrompt(), Callbacks(token)).also {
+        return LiveSession(apiKey ?: "", Conversation.systemPrompt(), Callbacks(token)) { name, args, reply ->
+            JarvisTools.call(getApplication(), name, args, reply)
+        }.also {
             session = it
             it.connect()
         }

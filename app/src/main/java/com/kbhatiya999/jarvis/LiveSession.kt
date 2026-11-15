@@ -32,6 +32,8 @@ class LiveSession(
     private val apiKey: String,
     private val systemPrompt: String,
     private val listener: Listener,
+    /** Runs a function Gemini called (on the main thread) and passes its result back, possibly later. */
+    private val tools: ((name: String, args: JSONObject, reply: (JSONObject) -> Unit) -> Unit)? = null,
 ) {
     interface Listener {
         fun onReady()
@@ -158,6 +160,7 @@ class LiveSession(
                 .put("model", MODEL)
                 .put("generationConfig", generation)
                 .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", systemPrompt))))
+                .apply { if (tools != null) put("tools", JarvisTools.declarations) }
                 .put("inputAudioTranscription", JSONObject())
                 .put("outputAudioTranscription", JSONObject())
                 .put(
@@ -181,6 +184,20 @@ class LiveSession(
             return
         }
 
+        msg.optJSONObject("toolCall")?.optJSONArray("functionCalls")?.let { calls ->
+            for (i in 0 until calls.length()) {
+                val call = calls.optJSONObject(i) ?: continue
+                val id = call.optString("id")
+                val name = call.optString("name")
+                val args = call.optJSONObject("args") ?: JSONObject()
+                main.post {
+                    val run = tools ?: return@post sendToolResponse(id, name, JSONObject().put("error", "no tools"))
+                    run(name, args) { result -> sendToolResponse(id, name, result) }
+                }
+            }
+            return
+        }
+
         val content = msg.optJSONObject("serverContent") ?: return
         content.optJSONObject("modelTurn")?.optJSONArray("parts")?.let { parts ->
             for (i in 0 until parts.length()) {
@@ -201,6 +218,13 @@ class LiveSession(
             main.post { listener.onInterrupted() }
         }
         if (content.optBoolean("turnComplete")) main.post { listener.onTurnComplete() }
+    }
+
+    private fun sendToolResponse(id: String, name: String, response: JSONObject) {
+        if (closed) return
+        val fr = JSONObject().put("name", name).put("response", response)
+        if (id.isNotEmpty()) fr.put("id", id)
+        ws?.send(JSONObject().put("toolResponse", JSONObject().put("functionResponses", JSONArray().put(fr))).toString())
     }
 
     private fun finish(reason: String?) {

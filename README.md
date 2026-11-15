@@ -7,10 +7,14 @@ A voice assistant in the J.A.R.V.I.S. persona, built on the Gemini Live API. It'
 - On first launch it asks for a Gemini API key. Get one at [Google AI Studio](https://aistudio.google.com/api-keys) and paste it in. The key is stored only on the phone, encrypted with the Android Keystore. Change it any time under **Settings → Change API key**.
 - Tap **Talk** to speak, or type a message. Jarvis replies by voice (voice "Charon"), and both sides show up as text.
 - The conversation is saved on the phone and fed back to Jarvis at the start of each session, so it remembers earlier chats. **Settings → Forget conversation** wipes it.
-- **Active mode** (Settings → Active mode): when you open an app, Jarvis speaks up on its own. It reminds you about water, junk and oily food, staying warm, and not getting hurt, choosing and combining these itself. It then listens for 5 seconds and stops if you stay silent. Setup:
+- **Active mode** (Settings → Active mode): when you open an app, Jarvis speaks up on its own. It works through your reminders, choosing and combining them itself, and passes on any messages from other Jarvises. It then listens for 5 seconds and stops if you stay silent. Setup:
   1. Turn on "Jarvis active mode" under Accessibility. If it's greyed out, go to App info → ⋮ → Allow restricted settings first.
   2. Flip the Active mode switch. A "Jarvis active" notification stays while it runs.
   - It speaks at most once per cooldown (30 min by default). It stays silent during quiet hours (11 pm–7 am), calls, Do Not Disturb, silent mode, and on the lock screen.
+- **Reminders** (Settings → Reminders): each person keeps their own list on their phone. It starts with water, junk and oily food, staying warm, and not getting hurt. Add or remove items there, or just tell Jarvis "remind me to stretch" or "stop reminding me about water".
+- **Jarvis to Jarvis** (Settings → Contacts): set your name, then **Share** your Jarvis address with a friend who uses Jarvis, and add theirs. After that, say "tell Priya's Jarvis I'll be 10 minutes late". Their Jarvis says it aloud if active mode is on and it's a good moment. Otherwise it shows a notification and Jarvis tells them the next time it speaks up. Replies work the same way.
+  - Messages are end-to-end encrypted: each Jarvis has its own key pair, and only the two of you can read a message. A message from someone not in your contacts shows up under Contacts as a request to accept or ignore.
+  - They travel through [ntfy.sh](https://ntfy.sh), a free public relay that needs no account and only ever sees ciphertext. It keeps messages for about 12 hours, so a phone that stays offline longer than that misses them. Jarvis receives messages live while it's open or active mode is on, and checks every 15 minutes otherwise.
 
 ## Install with Obtainium
 

@@ -94,19 +94,19 @@ fun ActiveScreen(vm: JarvisViewModel) {
         if (result[Manifest.permission.RECORD_AUDIO] == true || granted(context, Manifest.permission.RECORD_AUDIO)) turnOn()
     }
 
-    BackHandler { vm.showActiveSettings = false }
+    BackHandler { vm.screen = null }
 
     Column(
         Modifier.fillMaxSize().safeDrawingPadding().imePadding().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { vm.showActiveSettings = false }) { Text("Back") }
+            TextButton(onClick = { vm.screen = null }) { Text("Back") }
             Text("Active mode", fontSize = 22.sp, fontWeight = FontWeight.Bold)
         }
         Text(
-            "When you open an app, Jarvis speaks up on its own with reminders: water, junk and oily food, " +
-                "staying warm, and not getting hurt. It then listens for 5 seconds; if you say nothing, it stops.",
+            "When you open an app, Jarvis speaks up on its own with your reminders (Settings › Reminders) and " +
+                "relays messages from other Jarvises. It then listens for 5 seconds; if you say nothing, it stops.",
             color = Color.LightGray,
         )
 

@@ -12,10 +12,15 @@ data class Message(
     val id: Long = 0,
 ) {
     val fromUser get() = role == USER
+    val isRelay get() = role == SENT || role == RECEIVED
 
     companion object {
         const val USER = "user"
         const val JARVIS = "jarvis"
+        /** A message this Jarvis sent to someone else's Jarvis. */
+        const val SENT = "sent"
+        /** A message that arrived from someone else's Jarvis. */
+        const val RECEIVED = "received"
     }
 }
 
@@ -54,7 +59,13 @@ class ChatHistory(context: Context) {
             var size = 0
             for (m in messages.asReversed()) {
                 if (m.text.isBlank()) continue
-                val line = (if (m.fromUser) "User: " else "Jarvis: ") + m.text.trim()
+                val label = when (m.role) {
+                    Message.USER -> "User: "
+                    Message.SENT -> "[You sent a message] "
+                    Message.RECEIVED -> "[Message received] "
+                    else -> "Jarvis: "
+                }
+                val line = label + m.text.trim()
                 if (size + line.length > maxChars) break
                 lines.addFirst(line)
                 size += line.length + 1

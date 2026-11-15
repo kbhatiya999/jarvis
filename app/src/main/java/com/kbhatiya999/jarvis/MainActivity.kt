@@ -66,13 +66,17 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        Conversation.init(this)
+        Relay.schedule(this)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(primary = Accent, background = Background, surface = Background)) {
                 Surface(Modifier.fillMaxSize(), color = Background) {
                     val vm: JarvisViewModel = viewModel()
                     when {
                         vm.apiKey.isNullOrBlank() || vm.editingKey -> KeyScreen(vm)
-                        vm.showActiveSettings -> ActiveScreen(vm)
+                        vm.screen == "active" -> ActiveScreen(vm)
+                        vm.screen == "reminders" -> RemindersScreen(vm)
+                        vm.screen == "contacts" -> ContactsScreen(vm)
                         else -> ChatScreen(vm)
                     }
                 }
@@ -80,8 +84,20 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        // Messages from other Jarvises arrive live while the app is open.
+        Relay.acquireStream(this)
+    }
+
+    override fun onStop() {
+        Relay.releaseStream()
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
+        Relay.pollAsync(this)
         // Active mode can only (re)start while the app is in front, e.g. after a reboot.
         val settings = Settings(this)
         val mic = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -155,9 +171,14 @@ private fun ChatScreen(vm: JarvisViewModel) {
                 Text(vm.status, fontSize = 12.sp, color = if (vm.connected) Accent else Color.Gray)
             }
             Box {
-                TextButton(onClick = { menu = true }) { Text("Settings") }
+                TextButton(onClick = { menu = true }) { Text(if (Contacts.requests.isEmpty()) "Settings" else "Settings •") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("Active mode") }, onClick = { menu = false; vm.showActiveSettings = true })
+                    DropdownMenuItem(text = { Text("Active mode") }, onClick = { menu = false; vm.screen = "active" })
+                    DropdownMenuItem(text = { Text("Reminders") }, onClick = { menu = false; vm.screen = "reminders" })
+                    DropdownMenuItem(
+                        text = { Text(if (Contacts.requests.isEmpty()) "Contacts" else "Contacts (${Contacts.requests.size} new)") },
+                        onClick = { menu = false; vm.screen = "contacts" },
+                    )
                     DropdownMenuItem(text = { Text("Change API key") }, onClick = { menu = false; vm.editingKey = true })
                     DropdownMenuItem(text = { Text("Forget conversation") }, onClick = { menu = false; confirmForget = true })
                 }
@@ -216,6 +237,20 @@ private fun ChatScreen(vm: JarvisViewModel) {
 
 @Composable
 private fun Bubble(m: Message) {
+    if (m.isRelay) {
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Text(
+                m.text,
+                color = Color(0xFFFFE082),
+                fontSize = 13.sp,
+                modifier = Modifier
+                    .widthIn(max = 320.dp)
+                    .background(Color(0xFF2A2A1E), RoundedCornerShape(10.dp))
+                    .padding(10.dp, 6.dp),
+            )
+        }
+        return
+    }
     Box(Modifier.fillMaxWidth(), contentAlignment = if (m.fromUser) Alignment.CenterEnd else Alignment.CenterStart) {
         Text(
             m.text,

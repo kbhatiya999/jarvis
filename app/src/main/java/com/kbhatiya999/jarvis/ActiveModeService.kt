@@ -39,6 +39,7 @@ class ActiveModeService : Service() {
     private var micOn = false
     private var focus: AudioFocusRequest? = null
     private val endSession = Runnable { end() }
+    private var streaming = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -58,6 +59,8 @@ class ActiveModeService : Service() {
             return
         }
         instance = this
+        Relay.acquireStream(this)
+        streaming = true
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -74,6 +77,8 @@ class ActiveModeService : Service() {
 
     override fun onDestroy() {
         end()
+        if (streaming) Relay.releaseStream()
+        streaming = false
         if (instance === this) instance = null
         super.onDestroy()
     }
@@ -81,27 +86,48 @@ class ActiveModeService : Service() {
     private fun appOpened(pkgOrName: String, force: Boolean = false) {
         if (session != null) return
         if (!force && !allowedNow(pkgOrName)) return
+        if (ApiKeyStore(this).get() == null) return
+        val name = appLabel(pkgOrName)
+        val pending = Inbox.takePending(this)
+        startSession(Prompts.proactive(name, now(), pending), "(The user has just opened $name. Speak up now.)")
+    }
+
+    /** A message from another Jarvis arrived: say it now if that's appropriate, else it waits for the next app open. */
+    private fun messageArrived() {
+        val s = session
+        if (s != null) {
+            val pending = Inbox.takePending(this)
+            if (pending.isNotEmpty()) s.sendText("(New message just arrived: ${pending.joinToString(" | ")}. Relay it to the user now.)")
+            return
+        }
+        if (!allowedNow("", ignoreCooldown = true) || ApiKeyStore(this).get() == null) return
+        val pending = Inbox.takePending(this)
+        if (pending.isEmpty()) return
+        startSession(Prompts.relay(pending, now()), "(Messages just arrived. Relay them now.)")
+    }
+
+    private fun now() = SimpleDateFormat("h:mm a, EEEE", Locale.getDefault()).format(Date())
+
+    private fun startSession(prompt: String, cue: String) {
         val key = ApiKeyStore(this).get() ?: return
         settings.lastPromptAt = System.currentTimeMillis()
-
-        val name = appLabel(pkgOrName)
-        val time = SimpleDateFormat("h:mm a, EEEE", Locale.getDefault()).format(Date())
         val t = Any().also { token = it }
         writer = Conversation.Writer()
         micOn = false
         requestFocus()
         update("Speaking")
-        session = LiveSession(key, Conversation.systemPrompt(Prompts.proactive(name, time)), Callbacks(t)).also {
+        val tools = { n: String, a: org.json.JSONObject, r: (org.json.JSONObject) -> Unit -> JarvisTools.call(this, n, a, r) }
+        session = LiveSession(key, Conversation.systemPrompt(prompt), Callbacks(t), tools).also {
             it.connect()
             // Cue for Jarvis to start talking. Not stored in memory.
-            it.sendText("(The user has just opened $name. Speak up now.)")
+            it.sendText(cue)
         }
         main.postDelayed(endSession, MAX_SESSION_MS)
     }
 
-    private fun allowedNow(pkg: String): Boolean {
+    private fun allowedNow(pkg: String, ignoreCooldown: Boolean = false): Boolean {
         val now = System.currentTimeMillis()
-        if (now - settings.lastPromptAt < settings.cooldownSeconds * 1000L) return false
+        if (!ignoreCooldown && now - settings.lastPromptAt < settings.cooldownSeconds * 1000L) return false
         if (settings.quietHours) {
             val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
             if (h >= 23 || h < 7) return false
@@ -250,6 +276,11 @@ class ActiveModeService : Service() {
         /** Called by AppWatcher on the main thread. */
         fun onAppOpened(pkg: String) {
             instance?.appOpened(pkg)
+        }
+
+        /** Called by Inbox on the main thread. */
+        fun onMessageArrived() {
+            instance?.messageArrived()
         }
 
         fun start(context: Context) {
