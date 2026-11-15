@@ -10,6 +10,7 @@ import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,6 +26,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -47,6 +49,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
+
+private val LISTEN_PRESETS = listOf(3, 5, 8, 12, 20)
 
 private val COOLDOWN_PRESETS = listOf(
     0 to "Every app open (no cooldown)",
@@ -76,6 +80,9 @@ fun ActiveScreen(vm: JarvisViewModel) {
     var custom by remember { mutableStateOf(cooldown !in COOLDOWN_PRESETS.map { it.first }) }
     var customText by remember { mutableStateOf(if (custom) cooldown.toString() else "") }
     var quiet by remember { mutableStateOf(settings.quietHours) }
+    var listen by remember { mutableStateOf(settings.listenSeconds) }
+    var locked by remember { mutableStateOf(settings.speakWhenLocked) }
+    var interruptible by remember { mutableStateOf(settings.interruptible) }
 
     // Re-check after coming back from system settings.
     LifecycleResumeEffect(Unit) {
@@ -202,10 +209,42 @@ fun ActiveScreen(vm: JarvisViewModel) {
             }
             Switch(checked = quiet, onCheckedChange = { quiet = it; settings.quietHours = it })
         }
+        Text("Also stays silent during calls and in Do Not Disturb or silent mode.", fontSize = 13.sp, color = Color.Gray)
+
+        HorizontalDivider()
+        Text("Answering Jarvis", fontWeight = FontWeight.Bold)
         Text(
-            "Also stays silent during calls, in Do Not Disturb or silent mode, and on the lock screen.",
+            "After Jarvis has finished speaking, it listens for your answer: say a reply to a message, or anything else. " +
+                "No need to touch the phone.",
             fontSize = 13.sp, color = Color.Gray,
         )
+        Text("Listen for")
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            LISTEN_PRESETS.forEach { secs ->
+                FilterChip(
+                    selected = listen == secs,
+                    onClick = { listen = secs; settings.listenSeconds = secs },
+                    label = { Text("$secs s") },
+                )
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("On the lock screen", fontWeight = FontWeight.Bold)
+                Text("Say messages from other Jarvises, and hear your reply, while the phone is locked", fontSize = 13.sp, color = Color.Gray)
+            }
+            Switch(checked = locked, onCheckedChange = { locked = it; settings.speakWhenLocked = it })
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Let me interrupt", fontWeight = FontWeight.Bold)
+                Text(
+                    if (interruptible) "Talking over Jarvis cuts it off" else "Jarvis always finishes; the mic waits until it's done",
+                    fontSize = 13.sp, color = Color.Gray,
+                )
+            }
+            Switch(checked = interruptible, onCheckedChange = { interruptible = it; settings.interruptible = it })
+        }
         Spacer(Modifier.height(24.dp))
     }
 }

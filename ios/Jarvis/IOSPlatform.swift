@@ -30,7 +30,7 @@ final class IOSPlatform: NSObject, Platform {
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
     }
 
-    func createAudio() -> AudioIO { IOSAudio() }
+    func createAudio(speakOnly: Bool) -> AudioIO { IOSAudio(speakOnly: speakOnly) }
     func nowMillis() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
     func log(message: String) { NSLog("Jarvis: %@", message) }
 }

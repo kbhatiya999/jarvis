@@ -2,6 +2,7 @@ package com.kbhatiya999.jarvis
 
 import com.kbhatiya999.jarvis.core.Message
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -57,6 +58,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 private val Accent = Color(0xFF4FC3F7)
@@ -64,8 +66,12 @@ private val Background = Color(0xFF0B1220)
 private const val AI_STUDIO_KEYS = "https://aistudio.google.com/api-keys"
 
 class MainActivity : ComponentActivity() {
+    /** Opened from the Quick Settings tile: start listening once in front. */
+    private var talkOnResume = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        talkOnResume = intent?.getBooleanExtra(EXTRA_TALK, false) == true
         enableEdgeToEdge()
         AndroidPlatform.jarvis(this)
         RelayPollWorker.schedule(this)
@@ -83,6 +89,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_TALK, false)) talkOnResume = true
     }
 
     override fun onStart() {
@@ -103,6 +114,12 @@ class MainActivity : ComponentActivity() {
         val settings = Settings(this)
         val mic = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         if (settings.activeEnabled && mic && !ActiveModeService.running) ActiveModeService.start(this)
+        if (talkOnResume && mic) ViewModelProvider(this)[JarvisViewModel::class.java].talkNow()
+        talkOnResume = false
+    }
+
+    companion object {
+        const val EXTRA_TALK = "talk"
     }
 }
 

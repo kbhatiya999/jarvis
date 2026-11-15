@@ -26,6 +26,15 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     private var currentToken = Any()
     private var writer = jarvis.conversation.createWriter()
 
+    init {
+        VoiceChatService.onStopRequested = { endSession() }
+    }
+
+    /** The mic is on: keep it working when the screen locks (a microphone foreground service). */
+    private fun keepAlive(on: Boolean) {
+        if (on) VoiceChatService.start(getApplication()) else VoiceChatService.stop(getApplication())
+    }
+
     fun saveKey(key: String) {
         jarvis.saveApiKey(key)
         editingKey = false
@@ -41,10 +50,12 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         if (listening) {
             session?.stopMic()
             listening = false
+            keepAlive(false)
             status = "Listening paused"
         } else {
             ensureSession().startMic()
             listening = true
+            keepAlive(true)
             status = if (connected) "Listening" else "Connecting"
         }
     }
@@ -61,8 +72,14 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         session?.close()
         session = null
         connected = false
+        if (listening) keepAlive(false)
         listening = false
         writer.closeTurn()
+    }
+
+    /** Opened from the Quick Settings tile: start listening if not already. */
+    fun talkNow() {
+        if (!listening) toggleVoice()
     }
 
     private fun ensureSession(): LiveSession {
@@ -92,12 +109,14 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
             writer.closeTurn()
             session = null
             connected = false
+            if (listening) keepAlive(false)
             listening = false
             status = reason ?: "Standing by"
         }
     }
 
     override fun onCleared() {
+        VoiceChatService.onStopRequested = null
         endSession()
         jarvis.conversation.save()
     }

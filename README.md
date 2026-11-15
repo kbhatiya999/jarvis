@@ -10,7 +10,10 @@ A voice assistant in the J.A.R.V.I.S. persona, built on the Gemini Live API, for
 - **Active mode** (Settings → Active mode): when you open an app, Jarvis speaks up on its own. It works through your reminders, choosing and combining them itself, and passes on any messages from other Jarvises. It then listens for 5 seconds and stops if you stay silent. Setup:
   1. Turn on "Jarvis active mode" under Accessibility. Android blocks this for apps not installed from an app store. Tap the switch once so the "Restricted setting" popup appears; only after that does App info → ⋮ (top right) show **Allow restricted settings**. Allow it, then turn the switch on again. Uninstalling resets this.
   2. Flip the Active mode switch. A "Jarvis active" notification stays while it runs.
-  - It speaks at most once per cooldown (30 min by default). It stays silent during quiet hours (11 pm–7 am), calls, Do Not Disturb, silent mode, and on the lock screen.
+  - It speaks at most once per cooldown (30 min by default). It stays silent during quiet hours (11 pm–7 am), calls, Do Not Disturb and silent mode. Messages from other Jarvises are said aloud on the lock screen too.
+  - **Answer hands-free:** after Jarvis has finished speaking (a reminder, or a message from another Jarvis), it listens for 5 seconds. Just say your reply, such as "tell him I'm on my way", and Jarvis sends it. While it reads, talking over it doesn't cut it off. Under **Answering Jarvis** you can change how long it listens, whether it speaks on the lock screen, and whether you can interrupt it.
+  - **Talk without unlocking:** with active mode on, tap **Talk** on the "Jarvis active" notification, or add the **Talk to Jarvis** tile to Quick Settings (pull down twice › edit ✏️ › drag it in). Jarvis answers and listens, even on the lock screen. Without active mode, the tile opens Jarvis after you unlock.
+- **Voice chat keeps going when the phone locks.** While Jarvis is listening, a "Talking to Jarvis" notification shows, and the chat carries on with the screen off or in another app. Stop it from the app or the notification.
 - **Reminders** (Settings → Reminders): each person keeps their own list on their phone. It starts with water, junk and oily food, staying warm, and not getting hurt. Add or remove items there, or just tell Jarvis "remind me to stretch" or "stop reminding me about water".
 - **Jarvis to Jarvis** (Settings → Contacts): set your name, then **Share** your Jarvis address with a friend who uses Jarvis, and add theirs. After that, say "tell Priya's Jarvis I'll be 10 minutes late". Their Jarvis says it aloud if active mode is on and it's a good moment. Otherwise it shows a notification and Jarvis tells them the next time it speaks up. Replies work the same way.
   - Messages are end-to-end encrypted: each Jarvis has its own key pair, and only the two of you can read a message. A message from someone not in your contacts shows up under Contacts as a request to accept or ignore.
@@ -40,9 +43,23 @@ There's no Obtainium on iOS, and TestFlight needs a paid Apple developer account
 
 A free Apple ID signs apps for 7 days. AltStore/SideStore re-sign Jarvis in the background (or tap Refresh) so it keeps opening.
 
-Differences on iPhone:
-- **No active mode.** iOS doesn't let an app see which app you open, or start the mic from the background.
-- **Messages from other Jarvises** arrive live while Jarvis is open. In the background, iOS checks only now and then, and you get a notification. Waiting messages are said aloud when you open Jarvis.
+### Active mode on iPhone
+
+iOS doesn't let an app see which app you open, so Shortcuts does it. Set it up once (Jarvis › Settings › Active mode shows the same steps, with a button that opens Shortcuts):
+
+1. Turn on **Active mode** in Jarvis.
+2. Shortcuts › **Automation** › **+** › **App**. Pick the apps (Instagram, YouTube, ...) and keep **Is Opened** ticked.
+3. Choose **Run Immediately** and turn off **Notify When Run**. Tap Next.
+4. **New Blank Automation** › **Add Action**, search for **Jarvis check-in** and add it. You can type the app's name into it so Jarvis can mention it.
+
+When you open one of those apps, Jarvis speaks up in a sentence or two over it (its sound is lowered meanwhile), using the same reminders, cooldown and quiet hours as on Android, and says any waiting messages. **Test now** on the Active mode screen lets you hear it.
+
+Differences from Android:
+- **It can't listen afterwards.** iOS doesn't allow the mic from the background. A notification shows what Jarvis said; tap it and Jarvis opens with the mic on, so you can answer.
+- **Fewer "bad moment" checks.** It skips calls, but iOS doesn't tell apps about the silent switch or Focus, so quiet hours and the cooldown are what keep it quiet.
+- **You pick the apps in Shortcuts.** A newly installed app needs adding to the automation.
+
+Messages from other Jarvises arrive live while Jarvis is open. In the background, iOS checks only now and then, and you get a notification. Waiting messages are said aloud when you open Jarvis or at the next check-in.
 
 ## Develop
 
@@ -120,7 +137,7 @@ mise run tilt:ios-sim      # build and run in the iPhone simulator
 mise run tilt:ios-build    # unsigned .ipa in ios/build/ (for AltStore/SideStore)
 ```
 
-Both need Xcode (App Store; open it once, then `sudo xcode-select -s /Applications/Xcode.app`). mise provides everything else, including XcodeGen, which generates `ios/Jarvis.xcodeproj` from `ios/project.yml`. The project isn't committed. The iOS app is SwiftUI in `ios/Jarvis/`, on the shared Kotlin module in `shared/`, which Xcode builds as `JarvisCore.framework`.
+Both need Xcode (App Store; open it once, then `sudo xcode-select -s /Applications/Xcode.app`). iOS only runs the Jarvis check-in from Shortcuts for apps signed by an Apple team. For the simulator, add your free Apple ID in Xcode › Settings › Accounts, pick its Personal Team once under the Jarvis target's Signing & Capabilities, and put the team ID in `fnox.local.toml` as `IOS_TEAM_ID`; `tilt:ios-sim` then signs with it. Without it the simulator build still works, but only **Test now** runs the check-in. AltStore/SideStore installs are signed with each person's Apple ID and run it. mise provides everything else, including XcodeGen, which generates `ios/Jarvis.xcodeproj` from `ios/project.yml`. The project isn't committed. The iOS app is SwiftUI in `ios/Jarvis/`, on the shared Kotlin module in `shared/`, which Xcode builds as `JarvisCore.framework`.
 
 Releases include the iOS app when it can be built: always on GitHub (`tilt:release-ci`, or the Release workflow, on a macOS runner), and from this Mac once Xcode is installed. Without Xcode, `tilt:release` publishes Android only and says so.
 

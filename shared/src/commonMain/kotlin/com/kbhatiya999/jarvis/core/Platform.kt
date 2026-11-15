@@ -18,7 +18,8 @@ interface Platform {
     fun notify(title: String, text: String)
 
     /** A fresh audio device for one voice session. */
-    fun createAudio(): AudioIO
+    /** Audio for one session. [speakOnly]: no mic, and mix with (duck) other audio, e.g. an iPhone check-in from the background. */
+    fun createAudio(speakOnly: Boolean): AudioIO
 
     fun nowMillis(): Long
     fun log(message: String)

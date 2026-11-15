@@ -11,3 +11,4 @@ SIGNING_STORE_PASSWORD = { default = "", description = "Keystore password; set i
 SIGNING_KEY_ALIAS = { default = "jarvis", description = "Key alias in the keystore", if_missing = "ignore" }
 SIGNING_KEY_PASSWORD = { default = "", description = "Key password; set in fnox.local.toml", if_missing = "ignore" }
 SIGNING_KEYSTORE_B64 = { default = "", description = "Base64 keystore, copied to GitHub secrets by `mise run tilt:secrets-push`", if_missing = "ignore" }
+IOS_TEAM_ID = { default = "", description = "Your free Apple ID team (Xcode › Settings › Accounts) for simulator/iPhone builds from this Mac; empty = sign locally without a team. Set in fnox.local.toml", if_missing = "ignore" }

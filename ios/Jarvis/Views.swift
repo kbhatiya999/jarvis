@@ -96,6 +96,7 @@ struct ChatView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu(model.requests.isEmpty ? "Settings" : "Settings •") {
+                    NavigationLink("Active mode") { ActiveModeView() }
                     NavigationLink("Reminders") { RemindersView() }
                     NavigationLink(model.requests.isEmpty ? "Contacts" : "Contacts (\(model.requests.count) new)") { ContactsView() }
                     Button("Change API key") { model.editingKey = true }
@@ -244,5 +245,79 @@ struct ContactsView: View {
         }
         .navigationTitle("Contacts")
         .onAppear { name = model.myName }
+    }
+}
+
+// MARK: - Active mode
+
+struct ActiveModeView: View {
+    @EnvironmentObject var model: AppModel
+    @State private var enabled = false
+    @State private var cooldown: Int32 = ActiveMode.companion.DEFAULT_COOLDOWN
+    @State private var quiet = true
+    @State private var testing = false
+    @State private var result: String?
+
+    private var active: ActiveMode { model.jarvis.active }
+    private let presets: [(Int32, String)] = [
+        (0, "Every app open"), (300, "5 minutes"), (900, "15 minutes"), (1800, "30 minutes"), (3600, "1 hour"), (7200, "2 hours"),
+    ]
+
+    var body: some View {
+        List {
+            Section {
+                Text("When you open an app you choose, Jarvis speaks up on its own: your reminders and any messages from other Jarvises, in a sentence or two, over the app (its sound is lowered meanwhile). Then a notification lets you open Jarvis to reply.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                Toggle("Active mode", isOn: $enabled)
+                    .onChange(of: enabled) { _, v in active.enabled = v }
+            }
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("1. Open Shortcuts › Automation › + (New Automation).")
+                    Text("2. Choose App, pick the apps (e.g. Instagram, YouTube), keep \"Is Opened\" ticked.")
+                    Text("3. Choose Run Immediately and turn off Notify When Run. Tap Next.")
+                    Text("4. Tap New Blank Automation › Add Action, search for \"Jarvis check-in\" and add it. Optionally type the app's name into it.")
+                }
+                .font(.footnote)
+                Button("Open Shortcuts") { UIApplication.shared.open(URL(string: "shortcuts://")!) }
+            } header: {
+                Text("Set up once in Shortcuts")
+            } footer: {
+                Text("iOS doesn't let apps see what you open, so Shortcuts does it. Add more apps to the automation any time.")
+            }
+            Section("How often") {
+                Picker("Speak at most once every", selection: $cooldown) {
+                    ForEach(presets, id: \.0) { Text($0.1).tag($0.0) }
+                    if !presets.contains(where: { $0.0 == cooldown }) { Text("\(cooldown) seconds").tag(cooldown) }
+                }
+                .onChange(of: cooldown) { _, v in active.cooldownSeconds = v }
+                Toggle("Quiet hours (11 pm–7 am)", isOn: $quiet)
+                    .onChange(of: quiet) { _, v in active.quietHours = v }
+            }
+            Section {
+                Button(testing ? "Speaking…" : "Test now") {
+                    testing = true
+                    model.endSession()
+                    Task {
+                        result = await CheckIn.run(app: "Jarvis", force: true)
+                        testing = false
+                    }
+                }
+                .disabled(testing)
+                if let result { Text(result).font(.footnote).foregroundStyle(.secondary) }
+            } footer: {
+                Text("Speaks once now, ignoring the cooldown, so you can hear it.")
+            }
+            Section("Compared with Android") {
+                Text("Jarvis can't listen after speaking (iOS doesn't allow the mic from the background): tap its notification to reply. It skips calls, but iOS doesn't tell apps about the silent switch or Focus, so quiet hours and the cooldown are what keep it quiet.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .navigationTitle("Active mode")
+        .onAppear {
+            enabled = active.enabled
+            cooldown = active.cooldownSeconds
+            quiet = active.quietHours
+        }
     }
 }

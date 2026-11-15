@@ -3,15 +3,36 @@ import SwiftUI
 import UserNotifications
 import JarvisCore
 
+/// Notification taps (the "Tap to reply" one after a check-in).
+final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    @MainActor static var onReply: (() -> Void)?
+
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        return true
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        guard response.notification.request.content.categoryIdentifier == CheckIn.replyCategory else { return }
+        // Give the app a moment to come to the front before opening the mic.
+        try? await Task.sleep(for: .milliseconds(500))
+        await MainActor.run { AppDelegate.onReply?() }
+    }
+}
+
 @main
 struct JarvisApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model: AppModel
     @Environment(\.scenePhase) private var phase
     private static let pollTask = "com.kbhatiya999.jarvis.relay-poll"
 
     init() {
         let jarvis = Jarvis.companion.setUp(platform: IOSPlatform())
-        _model = StateObject(wrappedValue: AppModel(jarvis: jarvis))
+        let model = AppModel(jarvis: jarvis)
+        _model = StateObject(wrappedValue: model)
+        AppDelegate.onReply = { model.replyFromNotification() }
+        CheckIn.registerNotificationActions()
         // Background check of the relay for messages; iOS decides when it actually runs.
         BGTaskScheduler.shared.register(forTaskWithIdentifier: Self.pollTask, using: nil) { task in
             Self.schedulePoll()

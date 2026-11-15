@@ -3,6 +3,7 @@ package com.kbhatiya999.jarvis
 import com.kbhatiya999.jarvis.core.Conversation
 import com.kbhatiya999.jarvis.core.Jarvis
 import com.kbhatiya999.jarvis.core.LiveSession
+import com.kbhatiya999.jarvis.core.ActiveMode
 import com.kbhatiya999.jarvis.core.Prompts
 import android.app.KeyguardManager
 import android.app.Notification
@@ -45,6 +46,7 @@ class ActiveModeService : Service() {
     private var focus: AudioFocusRequest? = null
     private val endSession = Runnable { end() }
     private var streaming = false
+    private var listenMs = ActiveMode.DEFAULT_LISTEN * 1000L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -76,6 +78,7 @@ class ActiveModeService : Service() {
                 stopSelf()
             }
             ACTION_TEST -> appOpened("Jarvis test", force = true)
+            ACTION_TALK -> talk()
         }
         // Not sticky: a restart by the system would come from the background, where the mic is not allowed.
         return START_NOT_STICKY
@@ -97,8 +100,7 @@ class ActiveModeService : Service() {
         if (!force && !allowedNow(pkgOrName)) return
         if (jarvis.apiKey.value == null) return
         val name = appLabel(pkgOrName)
-        val pending = jarvis.inbox.takePending()
-        startSession(Prompts.proactive(name, now(), pending), "(The user has just opened $name. Speak up now.)")
+        startSession(jarvis.active.appOpenedPrompt(name, now()), ActiveMode.cue(name))
     }
 
     /** A message from another Jarvis arrived: say it now if that's appropriate, else it waits for the next app open. */
@@ -106,26 +108,41 @@ class ActiveModeService : Service() {
         val s = session
         if (s != null) {
             val pending = jarvis.inbox.takePending()
-            if (pending.isNotEmpty()) s.sendText("(New message just arrived: ${pending.joinToString(" | ")}. Relay it to the user now.)")
+            if (pending.isNotEmpty()) {
+                s.sendText("(New message just arrived: ${pending.joinToString(" | ")}. Relay it to the user now and ask if they'd like to reply.)")
+            }
             return
         }
-        if (!allowedNow("", ignoreCooldown = true) || jarvis.apiKey.value == null) return
+        // On the lock screen too, unless turned off (the phone is often locked when a message comes in).
+        if (!allowedNow("", ignoreCooldown = true, allowLocked = jarvis.active.speakWhenLocked)) return
         val pending = jarvis.inbox.takePending()
         if (pending.isEmpty()) return
         startSession(Prompts.relay(pending, now()), "(Messages just arrived. Relay them now.)")
     }
 
+    /** Talk from the notification or Quick Settings tile, also on the lock screen: Jarvis answers, then listens. */
+    private fun talk() {
+        if (session != null || jarvis.apiKey.value == null) return
+        startSession(
+            "The user tapped Talk (the phone may be locked or in another app) because they want to talk to you. " +
+                "Converse naturally and briefly.",
+            "(The user wants to talk. Answer in two or three words, e.g. \"Yes, Sir?\", then wait for them.)",
+            countsForCooldown = false,
+        )
+    }
+
     private fun now() = SimpleDateFormat("h:mm a, EEEE", Locale.getDefault()).format(Date())
 
-    private fun startSession(prompt: String, cue: String) {
+    private fun startSession(prompt: String, cue: String, countsForCooldown: Boolean = true) {
         if (jarvis.apiKey.value == null) return
-        settings.lastPromptAt = System.currentTimeMillis()
+        if (countsForCooldown) jarvis.active.markSpoke()
+        listenMs = jarvis.active.listenSeconds * 1000L
         val t = Any().also { token = it }
         writer = jarvis.conversation.createWriter()
         micOn = false
         requestFocus()
         update("Speaking")
-        session = jarvis.createSession(jarvis.systemPrompt(prompt), Callbacks(t)).also {
+        session = jarvis.createSession(jarvis.systemPrompt(prompt), Callbacks(t), interruptible = jarvis.active.interruptible).also {
             it.connect()
             // Cue for Jarvis to start talking. Not stored in memory.
             it.sendText(cue)
@@ -133,19 +150,15 @@ class ActiveModeService : Service() {
         main.postDelayed(endSession, MAX_SESSION_MS)
     }
 
-    private fun allowedNow(pkg: String, ignoreCooldown: Boolean = false): Boolean {
-        val now = System.currentTimeMillis()
-        if (!ignoreCooldown && now - settings.lastPromptAt < settings.cooldownSeconds * 1000L) return false
-        if (settings.quietHours) {
-            val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-            if (h >= 23 || h < 7) return false
-        }
+    private fun allowedNow(pkg: String, ignoreCooldown: Boolean = false, allowLocked: Boolean = false): Boolean {
+        if (!jarvis.active.allowed(Calendar.getInstance().get(Calendar.HOUR_OF_DAY), ignoreCooldown)) return false
+        // Android-only checks: calls, silent mode, Do Not Disturb, lock screen, the phone app itself.
         val audio = getSystemService(AudioManager::class.java)
         if (audio.mode == AudioManager.MODE_IN_CALL || audio.mode == AudioManager.MODE_IN_COMMUNICATION) return false
         if (audio.ringerMode == AudioManager.RINGER_MODE_SILENT) return false
         val nm = getSystemService(NotificationManager::class.java)
         if (nm.currentInterruptionFilter > NotificationManager.INTERRUPTION_FILTER_ALL) return false // Do Not Disturb
-        if (getSystemService(KeyguardManager::class.java).isKeyguardLocked) return false
+        if (!allowLocked && getSystemService(KeyguardManager::class.java).isKeyguardLocked) return false
         val dialer = try { getSystemService(TelecomManager::class.java)?.defaultDialerPackage } catch (e: Exception) { null }
         return pkg != dialer
     }
@@ -190,17 +203,37 @@ class ActiveModeService : Service() {
         }
     }
 
-    private val listenTimeout = Runnable { end() }
+    /**
+     * The answer window ran out. If the mic heard speech in the last moment, they've started talking (the
+     * transcript just hasn't arrived yet), so keep listening, up to [MAX_VOICE_WAIT_MS] on loudness alone.
+     */
+    private val listenTimeout: Runnable = Runnable {
+        val s = session
+        val now = System.currentTimeMillis()
+        if (s != null && now - s.lastVoiceAt < VOICE_RECENT_MS && now - listenStartedAt < listenMs + MAX_VOICE_WAIT_MS) {
+            main.postDelayed(listenTimeout, VOICE_RECHECK_MS)
+        } else {
+            end()
+        }
+    }
+    private var listenStartedAt = 0L
 
-    private val startListening = Runnable {
+    private val startListening: Runnable = Runnable {
         val s = session ?: return@Runnable
+        // Only once Jarvis has finished reading out loud: the listening time starts after its last word.
+        val left = s.playbackRemainingMs()
+        if (left > 0) {
+            main.postDelayed(startListening, left + 300)
+            return@Runnable
+        }
         if (!micOn) {
             s.startMic()
             micOn = true
         }
         update("Listening")
+        listenStartedAt = System.currentTimeMillis()
         main.removeCallbacks(listenTimeout)
-        main.postDelayed(listenTimeout, LISTEN_MS)
+        main.postDelayed(listenTimeout, listenMs)
     }
 
     private fun end() {
@@ -252,12 +285,17 @@ class ActiveModeService : Service() {
         val stop = PendingIntent.getService(
             this, 1, Intent(this, ActiveModeService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE
         )
+        val talk = PendingIntent.getService(
+            this, 2, Intent(this, ActiveModeService::class.java).setAction(ACTION_TALK), PendingIntent.FLAG_IMMUTABLE
+        )
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Jarvis active")
             .setContentText(text)
             .setOngoing(true)
             .setContentIntent(open)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC) // Talk works from the lock screen
+            .addAction(0, "Talk", talk)
             .addAction(0, "Turn off", stop)
             .build()
     }
@@ -272,8 +310,12 @@ class ActiveModeService : Service() {
         private const val NOTIFICATION_ID = 1
         private const val ACTION_STOP = "com.kbhatiya999.jarvis.STOP"
         private const val ACTION_TEST = "com.kbhatiya999.jarvis.TEST"
-        private const val LISTEN_MS = 5_000L
+        private const val ACTION_TALK = "com.kbhatiya999.jarvis.TALK"
+
         private const val REPLY_WAIT_MS = 10_000L
+        private const val VOICE_RECENT_MS = 1_500L
+        private const val VOICE_RECHECK_MS = 500L
+        private const val MAX_VOICE_WAIT_MS = 10_000L
         private const val MAX_SESSION_MS = 3 * 60_000L
 
         @Volatile
@@ -292,6 +334,11 @@ class ActiveModeService : Service() {
 
         fun stop(context: Context) {
             context.stopService(Intent(context, ActiveModeService::class.java))
+        }
+
+        /** Only while the service runs (it holds the mic): Jarvis greets you and listens. */
+        fun talk(context: Context) {
+            context.startService(Intent(context, ActiveModeService::class.java).setAction(ACTION_TALK))
         }
 
         fun test(context: Context) {

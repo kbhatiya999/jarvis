@@ -1,25 +1,27 @@
 package com.kbhatiya999.jarvis
 
 import android.content.Context
+import com.kbhatiya999.jarvis.core.ActiveMode
 
+/** Active mode settings, kept by the shared [ActiveMode] (the same rules as on iPhone). */
 class Settings(context: Context) {
-    private val prefs = context.getSharedPreferences("jarvis_settings", Context.MODE_PRIVATE)
+    private val active: ActiveMode = AndroidPlatform.jarvis(context).active
 
-    var activeEnabled: Boolean
-        get() = prefs.getBoolean("active_enabled", false)
-        set(v) = prefs.edit().putBoolean("active_enabled", v).apply()
+    init {
+        // Up to 0.6.0 these lived in SharedPreferences "jarvis_settings": copy them over once.
+        if (!active.hasSettings) {
+            val old = context.getSharedPreferences("jarvis_settings", Context.MODE_PRIVATE)
+            active.enabled = old.getBoolean("active_enabled", false)
+            active.quietHours = old.getBoolean("quiet_hours", true)
+            active.lastPromptAt = old.getLong("last_prompt_at", 0)
+            active.cooldownSeconds = old.getInt("cooldown_seconds", old.getInt("cooldown_minutes", 30) * 60)
+        }
+    }
 
-    /** Minimum gap between two proactive prompts, in seconds. 0 = speak on every app open. */
-    var cooldownSeconds: Int
-        get() = prefs.getInt("cooldown_seconds", prefs.getInt("cooldown_minutes", 30) * 60)
-        set(v) = prefs.edit().putInt("cooldown_seconds", maxOf(0, v)).apply()
-
-    /** No proactive prompts from 23:00 to 07:00. */
-    var quietHours: Boolean
-        get() = prefs.getBoolean("quiet_hours", true)
-        set(v) = prefs.edit().putBoolean("quiet_hours", v).apply()
-
-    var lastPromptAt: Long
-        get() = prefs.getLong("last_prompt_at", 0)
-        set(v) = prefs.edit().putLong("last_prompt_at", v).apply()
+    var activeEnabled by active::enabled
+    var cooldownSeconds by active::cooldownSeconds
+    var quietHours by active::quietHours
+    var listenSeconds by active::listenSeconds
+    var speakWhenLocked by active::speakWhenLocked
+    var interruptible by active::interruptible
 }

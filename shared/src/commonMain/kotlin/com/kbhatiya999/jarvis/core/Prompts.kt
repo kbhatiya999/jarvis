@@ -26,7 +26,7 @@ object Prompts {
         append("in your memory marked [You sent a message] and [Message received].")
     }
 
-    fun proactive(appName: String, time: String, pending: List<String>) = buildString {
+    fun proactive(appName: String, time: String, pending: List<String>, canListen: Boolean = true) = buildString {
         append("ACTIVE MODE. You speak up on your own; the user did not ask. They just opened the app \"$appName\" ")
         append("on their phone; the local time is $time. You look after the user's wellbeing using their standing ")
         append("reminders listed above. ")
@@ -37,12 +37,15 @@ object Prompts {
         append("Decide autonomously what to say: one reminder or several together, tied to the app, the time of ")
         append("day or your memory of earlier talks, worded freshly each time. If there are no reminders, a brief ")
         append("useful remark will do. Keep it brief, at most two or three sentences, so it doesn't get in their way. ")
-        append("If they answer, converse naturally; if they say they're busy, acknowledge briefly and stop.")
+        if (canListen) append("If they answer, converse naturally; if they say they're busy, acknowledge briefly and stop.")
+        else append("They can't answer by voice right now (they'd have to open Jarvis to reply), so don't ask questions; just say it and stop.")
     }
 
     fun relay(pending: List<String>, time: String) =
         "INCOMING MESSAGE. You speak up on your own because messages just arrived from other Jarvises; the local " +
             "time is $time. Tell the user who sent each and what it says, naturally and briefly: " +
-            pending.joinToString(" | ") + ". Then ask if they'd like to reply; if they dictate a reply, send it " +
-            "with send_message. If they say nothing, that's fine."
+            pending.joinToString(" | ") + ". Then ask in a few words if they'd like to reply. They answer by voice, " +
+            "often without touching the phone: if they say what to reply, send it to that sender with send_message " +
+            "right away, without asking to confirm unless it's unclear, then confirm in a few words. If they say " +
+            "nothing or decline, that's fine."
 }

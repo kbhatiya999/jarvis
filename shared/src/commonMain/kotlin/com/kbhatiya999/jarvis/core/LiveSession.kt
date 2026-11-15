@@ -20,11 +20,17 @@ import kotlinx.serialization.json.JsonPrimitive
  * Jarvis's voice (24 kHz PCM) back, reports transcripts of both sides and runs tool calls.
  * Create with [Jarvis.createSession]. Listener callbacks arrive on the main thread.
  */
+/** Mic loudness (RMS, of 32767) that counts as speech; above room noise after echo cancellation. */
+private const val VOICE_RMS = 700.0
+
 class LiveSession internal constructor(
     private val jarvis: Jarvis,
     private val apiKey: String,
     private val systemPrompt: String,
     private val listener: Listener,
+    private val speakOnly: Boolean = false,
+    /** False: while Jarvis's voice plays (and briefly after), the mic sends silence, so nothing cuts it off. */
+    private val interruptible: Boolean = true,
 ) {
     interface Listener {
         fun onReady()
@@ -35,7 +41,7 @@ class LiveSession internal constructor(
         fun onClosed(reason: String?)
     }
 
-    private val audio = jarvis.platform.createAudio()
+    private val audio = jarvis.platform.createAudio(speakOnly)
     private val queue = Channel<String>(Channel.UNLIMITED)
     private val pending = mutableListOf<String>() // sent once setup completes
     private var ready = false
@@ -59,7 +65,7 @@ class LiveSession internal constructor(
                         }
                     }
                     val close = closeReason.await()
-                    if (close != null && close.code != 1000.toShort()) reason = "Closed (${close.code}) ${close.message}".trim()
+                    if (close != null && close.code != 1000.toShort()) reason = closeReason(close.code.toInt(), close.message)
                     sender.cancel()
                 }
             } catch (e: CancellationException) {
@@ -88,8 +94,41 @@ class LiveSession internal constructor(
         recording = true
         audio.startCapture { chunk ->
             // Audio thread: the channel is thread-safe. Chunks before setup completes are dropped.
-            if (ready) queue.trySend(audioMessage(chunk))
+            val held = holdMic()
+            if (!held && isVoice(chunk)) lastVoiceAt = jarvis.platform.nowMillis()
+            if (ready) queue.trySend(audioMessage(if (held) ByteArray(chunk.size) else chunk))
         }
+    }
+
+    @kotlin.concurrent.Volatile private var quietUntil = 0L
+
+    /**
+     * When the mic last picked up something loud enough to be speech (platform clock, ms; 0 = never).
+     * Reacts at once, unlike the transcript, which lags speech by up to a second.
+     */
+    @kotlin.concurrent.Volatile var lastVoiceAt = 0L
+        private set
+
+    /** Loudness (RMS of 16-bit little-endian PCM) above which a chunk counts as someone talking. */
+    private fun isVoice(pcm: ByteArray): Boolean {
+        var sum = 0.0
+        var n = 0
+        var i = 0
+        while (i + 1 < pcm.size) {
+            val s = ((pcm[i + 1].toInt() shl 8) or (pcm[i].toInt() and 0xff)).toShort().toDouble()
+            sum += s * s
+            n++
+            i += 2
+        }
+        return n > 0 && kotlin.math.sqrt(sum / n) >= VOICE_RMS
+    }
+
+    /** Mic thread: true while Jarvis is speaking (plus 300 ms of echo) and it mustn't be interrupted. */
+    private fun holdMic(): Boolean {
+        if (interruptible) return false
+        val now = jarvis.platform.nowMillis()
+        if (audio.remainingMs() > 0) quietUntil = now + 300
+        return now < quietUntil
     }
 
     fun stopMic() {
@@ -176,6 +215,12 @@ class LiveSession internal constructor(
         val fr = mutableMapOf("name" to JsonPrimitive(name), "response" to response)
         if (id.isNotEmpty()) fr["id"] = JsonPrimitive(id)
         send(JsonObject(mapOf("toolResponse" to JsonObject(mapOf("functionResponses" to JsonArray(listOf(JsonObject(fr))))))).toString())
+    }
+
+    private fun closeReason(code: Int, message: String) = when {
+        // Free tier: too many sessions or tokens in a short time. It passes after a minute or so.
+        code == 1011 && "exhausted" in message -> "Gemini's free-tier limit was reached. Try again in a minute."
+        else -> "Closed ($code) $message".trim()
     }
 
     private fun finish(reason: String?) {

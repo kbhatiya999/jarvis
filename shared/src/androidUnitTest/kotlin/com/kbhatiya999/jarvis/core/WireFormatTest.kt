@@ -23,25 +23,6 @@ import kotlin.test.assertNull
  * therefore with every other copy. [Legacy] is the 0.6.0 implementation, copied verbatim.
  */
 class WireFormatTest {
-    private class MemStore : KeyValueStore {
-        val map = mutableMapOf<String, String>()
-        override fun get(key: String) = map[key]
-        override fun set(key: String, value: String?) { if (value == null) map.remove(key) else map[key] = value }
-    }
-
-    private class FakePlatform : Platform {
-        private val stores = mutableMapOf<String, MemStore>()
-        override fun store(namespace: String) = stores.getOrPut(namespace) { MemStore() }
-        override val secrets = MemStore()
-        override fun readFile(name: String): String? = null
-        override fun writeFile(name: String, text: String) {}
-        override fun deleteFile(name: String) {}
-        override fun notify(title: String, text: String) {}
-        override fun createAudio(): AudioIO = error("no audio in tests")
-        override fun nowMillis() = System.currentTimeMillis()
-        override fun log(message: String) {}
-    }
-
     /** Jarvis 0.6.0's Identity (Android), minus the Keystore storage. */
     private class Legacy {
         val topic = "jv_" + url(ByteArray(18).also { SecureRandom().nextBytes(it) })

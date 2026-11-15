@@ -18,6 +18,7 @@ class Jarvis private constructor(val platform: Platform) {
     val inbox = Inbox(this)
     val relay = Relay(this)
     val tools = Tools(this)
+    val active = ActiveMode(this)
 
     /** The Gemini API key, kept by the platform as a secret. */
     val apiKey = Watchable(platform.secrets.get("api_key")?.takeIf { it.isNotBlank() })
@@ -41,8 +42,12 @@ class Jarvis private constructor(val platform: Platform) {
     }
 
     /** A new voice session with the current API key; call connect() on it. */
-    fun createSession(systemPrompt: String, listener: LiveSession.Listener) =
-        LiveSession(this, apiKey.value ?: "", systemPrompt, listener)
+    fun createSession(
+        systemPrompt: String,
+        listener: LiveSession.Listener,
+        speakOnly: Boolean = false,
+        interruptible: Boolean = true,
+    ) = LiveSession(this, apiKey.value ?: "", systemPrompt, listener, speakOnly, interruptible)
 
     /** Accepts a contact request: adds the contact and delivers its message. */
     fun acceptRequest(request: ContactRequest) {

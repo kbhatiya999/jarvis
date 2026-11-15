@@ -34,6 +34,22 @@
             android:foregroundServiceType="microphone" />
 
         <service
+            android:name=".VoiceChatService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <service
+            android:name=".TalkTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_notification"
+            android:label="@string/talk_tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
             android:name=".AppWatcher"
             android:exported="false"
             android:label="@string/app_watcher_label"

@@ -18,12 +18,22 @@ code=$(( $(date +%s) / 60 - 26297280 ))                                       # 
 echo "Building Jarvis for iOS $APP_VERSION ($mode)"
 xcodegen generate --spec ios/project.yml --quiet
 common=(-project ios/Jarvis.xcodeproj -scheme Jarvis -derivedDataPath ios/build/derived
-        MARKETING_VERSION="$short" CURRENT_PROJECT_VERSION="$code" CODE_SIGNING_ALLOWED=NO)
+        MARKETING_VERSION="$short" CURRENT_PROJECT_VERSION="$code")
 if [ "$mode" = sim ]; then
-  xcodebuild "${common[@]}" -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build -quiet
-  echo "APP: ios/build/derived/Build/Products/Debug-iphonesimulator/Jarvis.app"
+  # Simulator builds are always signed: unsigned ones get a fresh Keychain on every install (API key and
+  # Jarvis address lost). With your free Apple ID team (IOS_TEAM_ID) iOS also runs the Jarvis check-in
+  # from Shortcuts, which it refuses for apps without a team.
+  team="${IOS_TEAM_ID:-$(fnox get IOS_TEAM_ID 2>/dev/null || true)}"
+  if [ -n "$team" ]; then sign=(CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$team")
+  else sign=(CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=-); fi
+  xcodebuild "${common[@]}" "${sign[@]}" -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build -quiet   # shared/ has no Intel simulator target
+  app=ios/build/derived/Build/Products/Debug-iphonesimulator/Jarvis.app
+  # Xcode always signs simulator apps without a team; iOS only runs Shortcuts actions (the Jarvis
+  # check-in) of apps whose signature names a team, so re-sign with your free Apple ID certificate.
+  if [ -n "$team" ]; then codesign -f -s "Apple Development" "$app"; fi
+  echo "APP: $app"
 else
-  xcodebuild "${common[@]}" -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' build -quiet
+  xcodebuild "${common[@]}" CODE_SIGNING_ALLOWED=NO -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' build -quiet
   rm -rf ios/build/ipa && mkdir -p ios/build/ipa/Payload
   cp -R ios/build/derived/Build/Products/Release-iphoneos/Jarvis.app ios/build/ipa/Payload/
   (cd ios/build/ipa && zip -qry "../jarvis-$APP_VERSION.ipa" Payload)

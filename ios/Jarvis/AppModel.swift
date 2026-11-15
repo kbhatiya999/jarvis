@@ -70,7 +70,7 @@ final class AppModel: ObservableObject {
             status = "Listening paused"
             return
         }
-        AVAudioSession.sharedInstance().requestRecordPermission { granted in
+        AVAudioApplication.requestRecordPermission { granted in
             Task { @MainActor in
                 guard granted else { self.status = "Microphone access is off (Settings › Jarvis)"; return }
                 self.ensureSession().startMic()
@@ -78,6 +78,11 @@ final class AppModel: ObservableObject {
                 self.status = self.connected ? "Listening" : "Connecting"
             }
         }
+    }
+
+    /// Tapped the notification after a check-in: open the mic so they can answer.
+    func replyFromNotification() {
+        if !listening { toggleVoice() }
     }
 
     func sendText(_ text: String) {
@@ -120,7 +125,7 @@ final class AppModel: ObservableObject {
         let t = NSObject()
         token = t
         writer = jarvis.conversation.createWriter()
-        let s = jarvis.createSession(systemPrompt: systemPrompt, listener: Callbacks(model: self, token: t))
+        let s = jarvis.createSession(systemPrompt: systemPrompt, listener: Callbacks(model: self, token: t), speakOnly: false, interruptible: true)
         session = s
         s.connect()
         return s
