@@ -8,6 +8,7 @@ android-sdk = "latest"
 tilt = "latest"
 fnox = "latest"
 gh = "latest"
+xcodegen = { version = "latest", os = ["macos"] } # generates ios/Jarvis.xcodeproj
 
 # How to use this file
 #
@@ -74,6 +75,14 @@ run = "scripts/tilt-run.sh build-ci"
 description = "Release on GitHub Actions instead of this Mac"
 usage = 'arg "[version]" help="x.y.z; defaults to the next patch"'
 run = 'scripts/tilt-input.sh version "${usage_version:-}" && scripts/tilt-run.sh release-ci'
+
+[tasks."tilt:ios-build"]
+description = "Build the iOS app (.ipa for AltStore/SideStore); needs Xcode"
+run = "scripts/tilt-run.sh ios-build"
+
+[tasks."tilt:ios-sim"]
+description = "Run the iOS app in the iPhone simulator; needs Xcode"
+run = "scripts/tilt-run.sh ios-sim"
 
 [tasks."tilt:devices"]
 description = "List phones adb can see"
@@ -151,6 +160,21 @@ hide = true
 description = "Signed APK (the one build path)"
 depends = ["setup"]
 run = "scripts/build.sh"
+
+[tasks."ios:build"]
+hide = true
+description = "iOS .ipa (unsigned; AltStore/SideStore sign it)"
+run = "scripts/ios-build.sh ipa"
+
+[tasks."ios:release-build"]
+hide = true
+description = "iOS .ipa for a release; skipped with a warning if Xcode is missing"
+run = "IOS_OPTIONAL=1 scripts/ios-build.sh ipa"
+
+[tasks."ios:sim"]
+hide = true
+description = "Build for and launch in the iOS simulator"
+run = "scripts/ios-run.sh"
 
 [tasks."build:ci"]
 hide = true

@@ -37,7 +37,7 @@ class WireFormatTest {
         override fun writeFile(name: String, text: String) {}
         override fun deleteFile(name: String) {}
         override fun notify(title: String, text: String) {}
-        override fun newAudio(): AudioIO = error("no audio in tests")
+        override fun createAudio(): AudioIO = error("no audio in tests")
         override fun nowMillis() = System.currentTimeMillis()
         override fun log(message: String) {}
     }

@@ -18,7 +18,7 @@ import kotlinx.serialization.json.JsonPrimitive
 /**
  * One Gemini Live API session over a WebSocket: streams mic audio (16 kHz PCM) up, plays
  * Jarvis's voice (24 kHz PCM) back, reports transcripts of both sides and runs tool calls.
- * Create with [Jarvis.newSession]. Listener callbacks arrive on the main thread.
+ * Create with [Jarvis.createSession]. Listener callbacks arrive on the main thread.
  */
 class LiveSession internal constructor(
     private val jarvis: Jarvis,
@@ -35,7 +35,7 @@ class LiveSession internal constructor(
         fun onClosed(reason: String?)
     }
 
-    private val audio = jarvis.platform.newAudio()
+    private val audio = jarvis.platform.createAudio()
     private val queue = Channel<String>(Channel.UNLIMITED)
     private val pending = mutableListOf<String>() // sent once setup completes
     private var ready = false

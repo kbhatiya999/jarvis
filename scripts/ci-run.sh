@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Step: run a GitHub workflow (the same scripts as on this Mac) and wait for it.
-#   scripts/ci-run.sh build     dev APK; downloaded to app/build/outputs/apk/ci/
+#   scripts/ci-run.sh build     dev APK and iOS .ipa; downloaded to app/build/outputs/apk/ci/ and ios/build/ci/
 #   scripts/ci-run.sh release   release (.tilt-inputs/version, or empty = next patch)
 # GitHub builds what is on origin/main, so local commits on main are pushed first.
 set -euo pipefail
@@ -32,4 +32,7 @@ if [ "$kind" = build ]; then
   rm -rf "$dir"
   gh run download "$id" -n jarvis-apk -D "$dir"
   echo "APK: $(ls "$dir"/*.apk)"
+  rm -rf ios/build/ci
+  gh run download "$id" -n jarvis-ipa -D ios/build/ci
+  echo "IPA: $(ls ios/build/ci/*.ipa)"
 fi

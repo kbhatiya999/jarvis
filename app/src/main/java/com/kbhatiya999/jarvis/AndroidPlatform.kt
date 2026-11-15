@@ -110,7 +110,7 @@ class AndroidPlatform private constructor(private val context: Context) : Platfo
         nm.notify((System.currentTimeMillis() % 100_000).toInt() + 100, n)
     }
 
-    override fun newAudio(): AudioIO = AndroidAudio()
+    override fun createAudio(): AudioIO = AndroidAudio()
     override fun nowMillis() = System.currentTimeMillis()
     override fun log(message: String) {
         Log.i("Jarvis", message)
@@ -148,6 +148,6 @@ class AndroidPlatform private constructor(private val context: Context) : Platfo
         private const val URL = Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
 
         /** The shared Jarvis for this process; safe to call from anywhere on the main thread. */
-        fun jarvis(context: Context): Jarvis = Jarvis.init(AndroidPlatform(context.applicationContext))
+        fun jarvis(context: Context): Jarvis = Jarvis.setUp(AndroidPlatform(context.applicationContext))
     }
 }

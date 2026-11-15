@@ -6,7 +6,7 @@ import kotlinx.coroutines.SupervisorJob
 
 /**
  * Everything Jarvis knows and does, shared by the Android and iOS apps. One instance per app
- * process: call [init] once at startup with the platform, then use [shared]. Main thread only.
+ * process: call [setUp] once at startup with the platform, then use [shared]. Main thread only.
  */
 class Jarvis private constructor(val platform: Platform) {
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -41,7 +41,7 @@ class Jarvis private constructor(val platform: Platform) {
     }
 
     /** A new voice session with the current API key; call connect() on it. */
-    fun newSession(systemPrompt: String, listener: LiveSession.Listener) =
+    fun createSession(systemPrompt: String, listener: LiveSession.Listener) =
         LiveSession(this, apiKey.value ?: "", systemPrompt, listener)
 
     /** Accepts a contact request: adds the contact and delivers its message. */
@@ -52,8 +52,8 @@ class Jarvis private constructor(val platform: Platform) {
     companion object {
         private var instance: Jarvis? = null
 
-        fun init(platform: Platform): Jarvis = instance ?: Jarvis(platform).also { instance = it }
+        fun setUp(platform: Platform): Jarvis = instance ?: Jarvis(platform).also { instance = it }
 
-        val shared: Jarvis get() = instance ?: error("Jarvis.init(platform) first")
+        val shared: Jarvis get() = instance ?: error("Jarvis.setUp(platform) first")
     }
 }

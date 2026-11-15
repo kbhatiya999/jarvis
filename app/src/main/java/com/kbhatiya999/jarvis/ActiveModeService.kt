@@ -121,11 +121,11 @@ class ActiveModeService : Service() {
         if (jarvis.apiKey.value == null) return
         settings.lastPromptAt = System.currentTimeMillis()
         val t = Any().also { token = it }
-        writer = jarvis.conversation.newWriter()
+        writer = jarvis.conversation.createWriter()
         micOn = false
         requestFocus()
         update("Speaking")
-        session = jarvis.newSession(jarvis.systemPrompt(prompt), Callbacks(t)).also {
+        session = jarvis.createSession(jarvis.systemPrompt(prompt), Callbacks(t)).also {
             it.connect()
             // Cue for Jarvis to start talking. Not stored in memory.
             it.sendText(cue)

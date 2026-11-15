@@ -1,8 +1,9 @@
 name: Release
 
 # Release without the Mac, e.g. from the GitHub app or website: Actions -> Release -> Run workflow.
-# Runs the same scripts as `mise run tilt:release` (check -> lint -> build -> publish), signed
-# with the same key (repo secrets, uploaded by `mise run tilt:secrets-push`). Manual only.
+# Runs the same scripts as `mise run tilt:release` (check -> lint -> test -> build -> iOS build ->
+# publish), signed with the same key (repo secrets, uploaded by `mise run tilt:secrets-push`).
+# Runs on macOS so the release always includes the iOS app. Manual only.
 on:
   workflow_dispatch:
     inputs:
@@ -17,7 +18,7 @@ concurrency: release
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: macos-15
     env:
       SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
       SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
@@ -29,6 +30,10 @@ jobs:
           ref: main
           fetch-depth: 0
       - uses: jdx/mise-action@v2
+      - uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('build.gradle.kts') }}
       - name: Signing key
         env:
           KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
@@ -46,5 +51,7 @@ jobs:
         run: mise run -q test
       - name: build
         run: mise run -q build
+      - name: ios-build
+        run: mise run -q ios:build
       - name: release-publish
         run: mise run -q release:publish

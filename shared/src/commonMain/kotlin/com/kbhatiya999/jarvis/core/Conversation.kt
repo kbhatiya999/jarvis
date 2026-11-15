@@ -77,7 +77,7 @@ class Conversation internal constructor(private val platform: Platform) {
         return lines.joinToString("\n")
     }
 
-    fun newWriter() = Writer()
+    fun createWriter() = Writer()
 
     /** Turns one session's streaming transcripts into messages. */
     inner class Writer {

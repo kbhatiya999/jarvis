@@ -1,0 +1,41 @@
+# XcodeGen spec for the iOS app; `mise run tilt:ios-build` generates Jarvis.xcodeproj from it.
+name: Jarvis
+options:
+  bundleIdPrefix: com.kbhatiya999
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    MARKETING_VERSION: "0.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: ""
+targets:
+  Jarvis:
+    type: application
+    platform: iOS
+    sources: [Jarvis]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kbhatiya999.jarvis
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Jarvis
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: Jarvis listens when you tap Talk, so you can speak to it.
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_UIUserInterfaceStyle: Dark
+        INFOPLIST_FILE: Jarvis/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        FRAMEWORK_SEARCH_PATHS: $(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)
+        OTHER_LDFLAGS: [-framework, JarvisCore]
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        CODE_SIGN_STYLE: Automatic
+    preBuildScripts:
+      - name: Build shared Kotlin (JarvisCore)
+        basedOnDependencyAnalysis: false
+        script: |
+          # Builds the shared Kotlin module for this SDK/arch and puts JarvisCore.framework where
+          # FRAMEWORK_SEARCH_PATHS looks. mise provides Java and Gradle, as for every other build.
+          cd "$SRCROOT/.."
+          export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+          mise exec -- ./gradlew --no-daemon :shared:embedAndSignAppleFrameworkForXcode

@@ -41,6 +41,10 @@ step('test', 'test', 'build')
 step('build', 'build', 'build')
 step('build-ci', 'build:ci', 'build')  # same build, on GitHub Actions
 
+step('ios-build', 'ios:build', 'ios')
+step('ios-release-build', 'ios:release-build', 'release')  # skips iOS if Xcode is missing
+step('ios-sim', 'ios:sim', 'ios')
+
 step('devices', 'devices', 'phone')
 step('phone-pair', 'phone:pair', 'phone')
 step('phone-connect', 'phone:connect', 'phone')
@@ -52,7 +56,7 @@ step('release-ci', 'release:ci', 'release')  # the release pipeline, on GitHub A
 
 # ---- pipelines
 # release: everything happens on this Mac; GitHub only stores the release for Obtainium.
-pipeline('release', ['release-check', 'lint', 'test', 'build', 'release-publish'])
+pipeline('release', ['release-check', 'lint', 'test', 'build', 'ios-release-build', 'release-publish'])
 
 # ---- buttons with input boxes
 cmd_button(

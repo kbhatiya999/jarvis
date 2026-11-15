@@ -14,3 +14,6 @@ fnox.local.toml
 
 # values typed into tilt:* tasks / Tilt buttons (version, pairing code)
 .tilt-inputs/
+# iOS: the Xcode project is generated from ios/project.yml (mise run tilt:ios-build)
+ios/Jarvis.xcodeproj/
+ios/build/

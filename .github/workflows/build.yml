@@ -1,8 +1,10 @@
 name: Build
 
-# Build a dev APK without releasing it: Actions -> Build -> Run workflow, then download the
-# "jarvis-apk" artifact (a zip; open it on the phone and install the APK). Same build script
-# and signing key as the Mac, so it installs over any other copy. Manual only.
+# Build dev versions without releasing: Actions -> Build -> Run workflow. Artifacts:
+#   jarvis-apk  Android (a zip; open it on the phone and install the APK). Same build script
+#               and signing key as the Mac, so it installs over any other copy.
+#   jarvis-ipa  iOS, unsigned (install with AltStore/SideStore, which sign it).
+# Manual only.
 on:
   workflow_dispatch:
 
@@ -35,3 +37,21 @@ jobs:
         with:
           name: jarvis-apk
           path: app/build/outputs/apk/release/jarvis-*.apk
+
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: jdx/mise-action@v2
+      - uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('build.gradle.kts') }}
+      - name: ios-build
+        run: mise run -q ios:build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-ipa
+          path: ios/build/jarvis-*.ipa

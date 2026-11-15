@@ -24,7 +24,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     private var session: LiveSession? = null
     // Callbacks from a session that was already replaced are ignored.
     private var currentToken = Any()
-    private var writer = jarvis.conversation.newWriter()
+    private var writer = jarvis.conversation.createWriter()
 
     fun saveKey(key: String) {
         jarvis.saveApiKey(key)
@@ -69,8 +69,8 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         session?.let { return it }
         status = "Connecting"
         val token = Any().also { currentToken = it }
-        writer = jarvis.conversation.newWriter()
-        return jarvis.newSession(jarvis.systemPrompt(), Callbacks(token)).also {
+        writer = jarvis.conversation.createWriter()
+        return jarvis.createSession(jarvis.systemPrompt(), Callbacks(token)).also {
             session = it
             it.connect()
         }

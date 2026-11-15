@@ -18,7 +18,7 @@ interface Platform {
     fun notify(title: String, text: String)
 
     /** A fresh audio device for one voice session. */
-    fun newAudio(): AudioIO
+    fun createAudio(): AudioIO
 
     fun nowMillis(): Long
     fun log(message: String)
