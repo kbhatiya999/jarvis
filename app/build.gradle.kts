@@ -22,6 +22,9 @@ android {
         targetSdk = 35
         versionCode = appVersionCode
         versionName = appVersion
+        // Phones only: the speech engine (Vosk) is ~10 MB per CPU type; x86 and MIPS builds would add ~25 MB.
+        // Emulators on Apple Silicon Macs are ARM too.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     // The same key must sign every release, otherwise Android refuses the update.
@@ -64,4 +67,6 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    // Offline "Jarvis wake up" / "Jarvis power down" (the model is downloaded in the app when turned on).
+    implementation("com.alphacephei:vosk-android:0.3.75")
 }

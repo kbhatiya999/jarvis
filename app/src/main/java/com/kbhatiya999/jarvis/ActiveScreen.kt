@@ -28,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -49,8 +50,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import com.kbhatiya999.jarvis.core.ActiveMode
 
 private val LISTEN_PRESETS = listOf(3, 5, 8, 12, 20)
+
+private val INTERRUPT_OPTIONS = listOf(
+    Triple(ActiveMode.INTERRUPT_NAME, "When I say \"Jarvis\"", "Coughs and the TV can't cut it off"),
+    Triple(ActiveMode.INTERRUPT_ANY, "Any time I talk", "Any sound of talking stops it"),
+    Triple(ActiveMode.INTERRUPT_NEVER, "Never", "Jarvis always finishes; the mic waits until it's done"),
+)
 
 private val COOLDOWN_PRESETS = listOf(
     0 to "Every app open (no cooldown)",
@@ -82,7 +90,7 @@ fun ActiveScreen(vm: JarvisViewModel) {
     var quiet by remember { mutableStateOf(settings.quietHours) }
     var listen by remember { mutableStateOf(settings.listenSeconds) }
     var locked by remember { mutableStateOf(settings.speakWhenLocked) }
-    var interruptible by remember { mutableStateOf(settings.interruptible) }
+    var interruptMode by remember { mutableStateOf(settings.interruptMode) }
 
     // Re-check after coming back from system settings.
     LifecycleResumeEffect(Unit) {
@@ -113,7 +121,7 @@ fun ActiveScreen(vm: JarvisViewModel) {
         }
         Text(
             "When you open an app, Jarvis speaks up on its own with your reminders (Settings › Reminders) and " +
-                "relays messages from other Jarvises. It then listens for 5 seconds; if you say nothing, it stops.",
+                "relays messages from other Jarvises. It then listens for your answer; if you say nothing, it stops.",
             color = Color.LightGray,
         )
 
@@ -235,16 +243,43 @@ fun ActiveScreen(vm: JarvisViewModel) {
             }
             Switch(checked = locked, onCheckedChange = { locked = it; settings.speakWhenLocked = it })
         }
+
+        HorizontalDivider()
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Let me interrupt", fontWeight = FontWeight.Bold)
+                Text("Voice commands", fontWeight = FontWeight.Bold)
                 Text(
-                    if (interruptible) "Talking over Jarvis cuts it off" else "Jarvis always finishes; the mic waits until it's done",
+                    "Say \"Jarvis wake up\" to talk (also on the lock screen) and \"Jarvis power down\" to stop it " +
+                        "at once. Heard on the phone itself, offline; needs active mode on. Downloads a 40 MB speech " +
+                        "model once. Android shows the mic dot while it listens.",
                     fontSize = 13.sp, color = Color.Gray,
                 )
             }
-            Switch(checked = interruptible, onCheckedChange = { interruptible = it; settings.interruptible = it })
+            Switch(checked = vm.wakeOn, enabled = vm.wakeDownload == null, onCheckedChange = { vm.setWake(it) })
         }
+        vm.wakeDownload?.let { p ->
+            LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth())
+            Text("Downloading the speech model… ${(p * 100).toInt()}%", fontSize = 13.sp, color = Color.Gray)
+        }
+        vm.wakeError?.let { Text(it, fontSize = 13.sp, color = Color(0xFFE57373)) }
+        if (vm.wakeOn) {
+            OutlinedButton(onClick = { vm.screen = "voice" }) { Text("Jarvis's replies") }
+        }
+
+        Text("Cutting Jarvis off", fontWeight = FontWeight.Bold)
+        INTERRUPT_OPTIONS.forEach { (mode, label, hint) ->
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(selected = interruptMode == mode, onClick = { interruptMode = mode; settings.interruptMode = mode })
+                Column {
+                    Text(label)
+                    Text(hint, fontSize = 13.sp, color = Color.Gray)
+                }
+            }
+        }
+        if (interruptMode == ActiveMode.INTERRUPT_NAME && !vm.wakeOn) {
+            Text("Needs voice commands on; until then Jarvis always finishes.", fontSize = 13.sp, color = Color(0xFFFFB74D))
+        }
+        Text("\"Jarvis power down\" always stops it.", fontSize = 13.sp, color = Color.Gray)
         Spacer(Modifier.height(24.dp))
     }
 }

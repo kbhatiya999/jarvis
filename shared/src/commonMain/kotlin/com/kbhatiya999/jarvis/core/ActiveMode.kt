@@ -33,10 +33,38 @@ class ActiveMode internal constructor(private val jarvis: Jarvis) {
         get() = store.get(LOCKED) != "false"
         set(v) = store.set(LOCKED, v.toString())
 
-    /** Talking over Jarvis cuts it off. Off: Jarvis always finishes reading, the mic waits until it's done. */
-    var interruptible: Boolean
-        get() = store.get(INTERRUPT) == "true"
-        set(v) = store.set(INTERRUPT, v.toString())
+    /**
+     * What may cut Jarvis off while it speaks: [INTERRUPT_NAME] (saying "Jarvis", needs [wakeEnabled]),
+     * [INTERRUPT_ANY] (any talking) or [INTERRUPT_NEVER]. "Jarvis power down" always works.
+     */
+    var interruptMode: String
+        get() = store.get(INTERRUPT_MODE)?.takeIf { it in INTERRUPT_MODES }
+            ?: if (store.get(INTERRUPT) == "true") INTERRUPT_ANY else INTERRUPT_NAME // 0.7.0 had an on/off switch
+        set(v) = store.set(INTERRUPT_MODE, v.takeIf { it in INTERRUPT_MODES } ?: INTERRUPT_NAME)
+
+    /** Any talking cuts Jarvis off (the Live session's own interruption). */
+    val interruptible: Boolean get() = interruptMode == INTERRUPT_ANY
+
+    /** Android: listen for "Jarvis wake up", "Jarvis power down" and "Jarvis" (offline, on the phone). */
+    var wakeEnabled: Boolean
+        get() = store.get(WAKE) == "true"
+        set(v) = store.set(WAKE, v.toString())
+
+    /** What Jarvis says on "Jarvis wake up" (one picked at random). */
+    var wakeLines: List<String>
+        get() = lines(WAKE_LINES, DEFAULT_WAKE_LINES)
+        set(v) = setLines(WAKE_LINES, v)
+
+    /** What Jarvis says on "Jarvis power down". */
+    var powerDownLines: List<String>
+        get() = lines(POWER_LINES, DEFAULT_POWER_LINES)
+        set(v) = setLines(POWER_LINES, v)
+
+    private fun lines(key: String, default: List<String>) =
+        store.get(key)?.split('\n')?.map { it.trim() }?.filter { it.isNotEmpty() }?.takeIf { it.isNotEmpty() } ?: default
+
+    private fun setLines(key: String, v: List<String>) =
+        store.set(key, v.map { it.trim() }.filter { it.isNotEmpty() }.takeIf { it.isNotEmpty() }?.joinToString("\n"))
 
     var lastPromptAt: Long
         get() = store.get(LAST)?.toLongOrNull() ?: 0
@@ -71,6 +99,16 @@ class ActiveMode internal constructor(private val jarvis: Jarvis) {
 
         const val DEFAULT_COOLDOWN = 30 * 60
         const val DEFAULT_LISTEN = 5
+        const val INTERRUPT_NAME = "name"
+        const val INTERRUPT_ANY = "any"
+        const val INTERRUPT_NEVER = "never"
+        private val INTERRUPT_MODES = setOf(INTERRUPT_NAME, INTERRUPT_ANY, INTERRUPT_NEVER)
+        val DEFAULT_WAKE_LINES = listOf("At your service, Sir.", "Yes, Sir?", "Listening.")
+        val DEFAULT_POWER_LINES = listOf("Powering down, Sir.", "Standing by.", "As you wish.")
+        private const val INTERRUPT_MODE = "interrupt_mode"
+        private const val WAKE = "wake_enabled"
+        private const val WAKE_LINES = "wake_lines"
+        private const val POWER_LINES = "power_down_lines"
         private const val LISTEN = "listen_seconds"
         private const val LOCKED = "speak_when_locked"
         private const val INTERRUPT = "interruptible"

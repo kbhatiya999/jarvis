@@ -19,6 +19,7 @@ class Jarvis private constructor(val platform: Platform) {
     val relay = Relay(this)
     val tools = Tools(this)
     val active = ActiveMode(this)
+    val voiceLines = VoiceLines(this)
 
     /** The Gemini API key, kept by the platform as a secret. */
     val apiKey = Watchable(platform.secrets.get("api_key")?.takeIf { it.isNotBlank() })

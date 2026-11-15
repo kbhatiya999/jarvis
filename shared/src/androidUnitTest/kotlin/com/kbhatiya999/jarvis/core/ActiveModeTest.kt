@@ -33,6 +33,9 @@ class ActiveModeTest {
         assertEquals(5, active.listenSeconds)
         assertTrue(active.speakWhenLocked)
         assertFalse(active.interruptible)
+        assertEquals(ActiveMode.INTERRUPT_NAME, active.interruptMode)
+        assertFalse(active.wakeEnabled)
+        assertEquals(ActiveMode.DEFAULT_WAKE_LINES, active.wakeLines)
         store.map.putAll(saved)
     }
 

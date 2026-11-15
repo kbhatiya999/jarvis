@@ -141,6 +141,7 @@ private final class Speaker: NSObject, LiveSessionListener {
     nonisolated func onReady() {}
     nonisolated func onUserText(delta: String) {}
     nonisolated func onInterrupted() {}
+    nonisolated func onEndRequested() {} // speak-only: it ends after its turn anyway
 
     nonisolated func onJarvisText(delta: String) {
         MainActor.assumeIsolated {

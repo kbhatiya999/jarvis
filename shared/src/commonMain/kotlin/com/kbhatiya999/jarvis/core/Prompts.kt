@@ -23,7 +23,10 @@ object Prompts {
         append(". When the user asks you to tell someone, or someone's Jarvis, something, call send_message with the ")
         append("contact's name and the message written as you would say it to that person (in your own voice, ")
         append("mentioning it comes from the user), then confirm briefly. Messages to and from other Jarvises appear ")
-        append("in your memory marked [You sent a message] and [Message received].")
+        append("in your memory marked [You sent a message] and [Message received]. ")
+        append("When the user wants you to stop or is done (\"stop\", \"that's enough\", \"never mind\", ")
+        append("\"goodbye\"), reply with a very short acknowledgement in character, e.g. \"As you wish, Sir.\", and call ")
+        append("end_conversation.")
     }
 
     fun proactive(appName: String, time: String, pending: List<String>, canListen: Boolean = true) = buildString {

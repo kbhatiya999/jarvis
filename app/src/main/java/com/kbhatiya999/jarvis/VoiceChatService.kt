@@ -34,12 +34,18 @@ class VoiceChatService : Service() {
         try {
             val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(), type)
+            running = true
         } catch (e: Exception) {
             // Only possible from the background; the chat then simply stops hearing you when locked.
             Log.w("JarvisVoice", "Cannot keep the mic in the background", e)
             stopSelf()
         }
         return START_NOT_STICKY
+    }
+
+    override fun onDestroy() {
+        running = false
+        super.onDestroy()
     }
 
     private fun notification(): Notification {
@@ -62,6 +68,10 @@ class VoiceChatService : Service() {
         private const val CHANNEL = "voice_chat"
         private const val NOTIFICATION_ID = 2
         private const val ACTION_STOP = "com.kbhatiya999.jarvis.VOICE_STOP"
+
+        /** A voice chat in the app has the mic on. */
+        @Volatile var running = false
+            private set
 
         /** Set by the chat: Stop on the notification ends the voice chat. */
         var onStopRequested: (() -> Unit)? = null

@@ -1,57 +1,28 @@
 package com.kbhatiya999.jarvis
 
-import android.annotation.SuppressLint
 import android.media.AudioAttributes
 import android.media.AudioFormat
-import android.media.AudioRecord
 import android.media.AudioTrack
-import android.media.MediaRecorder
-import android.media.audiofx.AcousticEchoCanceler
-import android.media.audiofx.NoiseSuppressor
 import com.kbhatiya999.jarvis.core.AudioIO
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
-/** Mic (16 kHz, echo-cancelled) and speaker (24 kHz) for one voice session. */
+/** Mic (via [MicHub]: 16 kHz, echo-cancelled) and speaker (24 kHz) for one voice session. */
 class AndroidAudio : AudioIO {
     private val player = Player()
-    @Volatile private var recording = false
+    private var listener: ((ByteArray) -> Unit)? = null
 
-    @SuppressLint("MissingPermission") // the UI asks for RECORD_AUDIO before a session uses the mic
+    @Synchronized
     override fun startCapture(onChunk: (ByteArray) -> Unit) {
-        if (recording) return
-        recording = true
-        Thread {
-            val minBuf = AudioRecord.getMinBufferSize(IN_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-            val rec = AudioRecord(
-                MediaRecorder.AudioSource.VOICE_COMMUNICATION, IN_RATE,
-                AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuf, CHUNK * 4)
-            )
-            if (rec.state != AudioRecord.STATE_INITIALIZED) {
-                rec.release()
-                recording = false
-                return@Thread
-            }
-            // Keep Jarvis's own voice from the speaker out of the mic.
-            if (AcousticEchoCanceler.isAvailable()) AcousticEchoCanceler.create(rec.audioSessionId)?.enabled = true
-            if (NoiseSuppressor.isAvailable()) NoiseSuppressor.create(rec.audioSessionId)?.enabled = true
-            val buf = ByteArray(CHUNK)
-            try {
-                rec.startRecording()
-                while (recording) {
-                    val n = rec.read(buf, 0, buf.size)
-                    if (n > 0) onChunk(buf.copyOf(n))
-                }
-            } finally {
-                try { rec.stop() } catch (e: IllegalStateException) { }
-                rec.release()
-            }
-        }.apply { name = "jarvis-mic"; start() }
+        if (listener != null) return
+        listener = onChunk.also { MicHub.add(it) }
     }
 
+    @Synchronized
     override fun stopCapture() {
-        recording = false
+        listener?.let { MicHub.remove(it) }
+        listener = null
     }
 
     override fun play(pcm: ByteArray) = player.play(pcm)
@@ -59,7 +30,7 @@ class AndroidAudio : AudioIO {
     override fun remainingMs(): Long = player.remainingMs()
 
     override fun shutdown() {
-        recording = false
+        stopCapture()
         player.release()
     }
 
@@ -130,8 +101,6 @@ class AndroidAudio : AudioIO {
     }
 
     private companion object {
-        const val IN_RATE = 16000
         const val OUT_RATE = 24000
-        const val CHUNK = 2048 // 1024 samples of 16-bit audio
     }
 }

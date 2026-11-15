@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import android.os.Handler
+import android.os.Looper
 import androidx.lifecycle.AndroidViewModel
 import com.kbhatiya999.jarvis.core.LiveSession
 
@@ -21,10 +23,56 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     var listening by mutableStateOf(false)
         private set
 
+    /** Downloading the offline speech model for "Jarvis wake up": 0..1, or null when not downloading. */
+    var wakeDownload by mutableStateOf<Float?>(null)
+        private set
+    var wakeError by mutableStateOf<String?>(null)
+        private set
+    var wakeOn by mutableStateOf(jarvis.active.wakeEnabled && WakeListener.Models.ready(app))
+        private set
+
+    /** Turns voice commands on (downloading the model first if needed) or off. */
+    fun setWake(on: Boolean) {
+        val app = getApplication<Application>()
+        wakeError = null
+        if (!on) {
+            jarvis.active.wakeEnabled = false
+            wakeOn = false
+            ActiveModeService.refreshWake(app)
+            return
+        }
+        if (WakeListener.Models.ready(app)) {
+            jarvis.active.wakeEnabled = true
+            wakeOn = true
+            ActiveModeService.refreshWake(app)
+            return
+        }
+        if (wakeDownload != null) return
+        wakeDownload = 0f
+        Thread {
+            var last = 0f
+            val error = WakeListener.Models.download(app) { p ->
+                if (p - last >= 0.01f || p >= 1f) { last = p; main.post { wakeDownload = p } }
+            }
+            main.post {
+                wakeDownload = null
+                wakeError = error
+                if (error == null) {
+                    jarvis.active.wakeEnabled = true
+                    wakeOn = true
+                    ActiveModeService.refreshWake(app)
+                }
+            }
+        }.apply { name = "jarvis-model-download"; start() }
+    }
+
     private var session: LiveSession? = null
     // Callbacks from a session that was already replaced are ignored.
     private var currentToken = Any()
     private var writer = jarvis.conversation.createWriter()
+    private val main = Handler(Looper.getMainLooper())
+    // "That's enough": end the chat once Jarvis's goodbye has played.
+    private var endAfterTurn = false
 
     init {
         VoiceChatService.onStopRequested = { endSession() }
@@ -85,6 +133,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     private fun ensureSession(): LiveSession {
         session?.let { return it }
         status = "Connecting"
+        endAfterTurn = false
         val token = Any().also { currentToken = it }
         writer = jarvis.conversation.createWriter()
         return jarvis.createSession(jarvis.systemPrompt(), Callbacks(token)).also {
@@ -102,7 +151,15 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         }
         override fun onUserText(delta: String) { if (live()) writer.userDelta(delta) }
         override fun onJarvisText(delta: String) { if (live()) writer.jarvisDelta(delta) }
-        override fun onTurnComplete() { if (live()) writer.closeTurn() }
+        override fun onTurnComplete() {
+            if (!live()) return
+            writer.closeTurn()
+            if (endAfterTurn) {
+                val wait = session?.playbackRemainingMs() ?: 0
+                main.postDelayed({ if (live()) { endSession(); status = "Standing by" } }, wait + 300)
+            }
+        }
+        override fun onEndRequested() { if (live()) endAfterTurn = true }
         override fun onInterrupted() { if (live()) writer.closeTurn() }
         override fun onClosed(reason: String?) {
             if (!live()) return

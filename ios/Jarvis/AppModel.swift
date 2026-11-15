@@ -92,6 +92,9 @@ final class AppModel: ObservableObject {
         ensureSession().sendText(text: t)
     }
 
+    /// The user said "that's enough" or similar: end once Jarvis's goodbye has played.
+    fileprivate var endAfterTurn = false
+
     func endSession() {
         token = NSObject()
         session?.close()
@@ -121,6 +124,7 @@ final class AppModel: ObservableObject {
     }
 
     private func startSession(systemPrompt: String) -> LiveSession {
+        endAfterTurn = false
         status = "Connecting"
         let t = NSObject()
         token = t
@@ -147,8 +151,20 @@ final class AppModel: ObservableObject {
         func onReady() { on { m in m.connected = true; m.status = m.listening ? "Listening" : "Online" } }
         func onUserText(delta: String) { on { $0.writer.userDelta(delta: delta) } }
         func onJarvisText(delta: String) { on { $0.writer.jarvisDelta(delta: delta) } }
-        func onTurnComplete() { on { $0.writer.closeTurn() } }
+        func onTurnComplete() {
+            on { m in
+                m.writer.closeTurn()
+                guard m.endAfterTurn, let s = m.session else { return }
+                // "That's enough": let the goodbye play out, then end the chat.
+                let t = m.token
+                let wait = Double(s.playbackRemainingMs()) / 1000 + 0.3
+                DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak m] in
+                    if let m, m.token === t { m.endSession() }
+                }
+            }
+        }
         func onInterrupted() { on { $0.writer.closeTurn() } }
+        func onEndRequested() { on { $0.endAfterTurn = true } }
         func onClosed(reason: String?) {
             on { m in
                 m.writer.closeTurn()

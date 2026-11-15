@@ -82,6 +82,7 @@ class MainActivity : ComponentActivity() {
                     when {
                         vm.jarvis.apiKey.observe().isNullOrBlank() || vm.editingKey -> KeyScreen(vm)
                         vm.screen == "active" -> ActiveScreen(vm)
+                        vm.screen == "voice" -> VoiceScreen(vm)
                         vm.screen == "reminders" -> RemindersScreen(vm)
                         vm.screen == "contacts" -> ContactsScreen(vm)
                         else -> ChatScreen(vm)

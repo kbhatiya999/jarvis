@@ -23,5 +23,5 @@ class Settings(context: Context) {
     var quietHours by active::quietHours
     var listenSeconds by active::listenSeconds
     var speakWhenLocked by active::speakWhenLocked
-    var interruptible by active::interruptible
+    var interruptMode by active::interruptMode
 }

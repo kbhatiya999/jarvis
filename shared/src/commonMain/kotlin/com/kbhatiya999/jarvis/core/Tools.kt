@@ -16,6 +16,8 @@ class Tools internal constructor(private val jarvis: Jarvis) {
                 "reminder" to "What to remind them about, e.g. \"stretching every hour\"."),
             fn("remove_reminder", "Stop reminding the user about something.",
                 "reminder" to "The reminder to remove, as listed."),
+            fn(END_CONVERSATION, "End this conversation: the user wants you to stop or is done (\"stop\", \"that's " +
+                "enough\", \"never mind\", \"goodbye\", \"power down\"). Say a very short acknowledgement first."),
         ))
     ))))
 
@@ -59,18 +61,23 @@ class Tools internal constructor(private val jarvis: Jarvis) {
         }
     }
 
+    companion object {
+        /** Handled by the session itself (it ends the session), not by [call]. */
+        const val END_CONVERSATION = "end_conversation"
+    }
+
     private fun ok(result: String) = JsonObject(mapOf("result" to JsonPrimitive(result)))
     private fun error(message: String) = JsonObject(mapOf("error" to JsonPrimitive(message)))
 
-    private fun fn(name: String, description: String, vararg params: Pair<String, String>) = JsonObject(mapOf(
-        "name" to JsonPrimitive(name),
-        "description" to JsonPrimitive(description),
-        "parameters" to JsonObject(mapOf(
+    private fun fn(name: String, description: String, vararg params: Pair<String, String>) = JsonObject(buildMap {
+        put("name", JsonPrimitive(name))
+        put("description", JsonPrimitive(description))
+        if (params.isNotEmpty()) put("parameters", JsonObject(mapOf(
             "type" to JsonPrimitive("OBJECT"),
             "properties" to JsonObject(params.associate { (p, d) ->
                 p to JsonObject(mapOf("type" to JsonPrimitive("STRING"), "description" to JsonPrimitive(d)))
             }),
             "required" to JsonArray(params.map { JsonPrimitive(it.first) }),
-        )),
-    ))
+        )))
+    })
 }
