@@ -126,7 +126,7 @@ final class AppModel: ObservableObject {
         return s
     }
 
-    fileprivate func handle(_ token: NSObject, _ event: (AppModel) -> Void) {
+    fileprivate func handle(_ token: NSObject, _ event: @MainActor (AppModel) -> Void) {
         if token === self.token { event(self) }
     }
 
@@ -135,7 +135,7 @@ final class AppModel: ObservableObject {
         let token: NSObject
         init(model: AppModel, token: NSObject) { self.model = model; self.token = token }
 
-        private func on(_ event: @escaping (AppModel) -> Void) {
+        private func on(_ event: @escaping @MainActor (AppModel) -> Void) {
             MainActor.assumeIsolated { model?.handle(token, event) }
         }
 
