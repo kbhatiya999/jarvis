@@ -184,7 +184,7 @@ class LiveSession internal constructor(
         ready = false
         recording = false
         queue.close()
-        audio.release()
+        audio.shutdown()
         listener.onClosed(reason)
     }
 

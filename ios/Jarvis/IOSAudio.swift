@@ -99,7 +99,7 @@ final class IOSAudio: NSObject, AudioIO {
         return max(0, scheduled - played) * 1000 / 24000
     }
 
-    func release() {
+    func shutdown() {
         stopCapture()
         player.stop()
         engine.stop()

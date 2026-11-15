@@ -58,7 +58,7 @@ class AndroidAudio : AudioIO {
     override fun flush() = player.flush()
     override fun remainingMs(): Long = player.remainingMs()
 
-    override fun release() {
+    override fun shutdown() {
         recording = false
         player.release()
     }

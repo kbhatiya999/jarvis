@@ -68,8 +68,8 @@ struct ChatView: View {
                     }
                     .padding(12)
                 }
-                .onChange(of: model.messages.count) { _ in scroll(proxy) }
-                .onChange(of: model.messages.last?.text) { _ in scroll(proxy) }
+                .onChange(of: model.messages.count) { scroll(proxy) }
+                .onChange(of: model.messages.last?.text) { scroll(proxy) }
             }
             HStack(alignment: .bottom) {
                 TextField("Message Jarvis", text: $input, axis: .vertical)
@@ -200,7 +200,7 @@ struct ContactsView: View {
             }
             Section("Your Jarvis") {
                 TextField("Your name (what friends' Jarvises call you)", text: $name)
-                    .onChange(of: name) { v in book.updateMyName(name: String(v.prefix(40))) }
+                    .onChange(of: name) { _, v in book.updateMyName(name: String(v.prefix(40))) }
                 Text(me).font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
                 ShareLink("Share your Jarvis address", item: book.shareText(myAddress: me))
                 Button("Copy") { UIPasteboard.general.string = book.shareText(myAddress: me) }
@@ -224,7 +224,7 @@ struct ContactsView: View {
             Section("Add a contact") {
                 TextField("Paste what they shared", text: $newAddress, axis: .vertical)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    .onChange(of: newAddress) { v in
+                    .onChange(of: newAddress) { _, v in
                         error = nil
                         if newName.isEmpty, let n = book.extractName(text: v) { newName = n }
                     }

@@ -45,5 +45,5 @@ interface AudioIO {
 
     /** How much queued audio is still to be heard, in milliseconds. */
     fun remainingMs(): Long
-    fun release()
+    fun shutdown()
 }

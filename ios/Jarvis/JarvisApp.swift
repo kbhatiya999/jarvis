@@ -33,7 +33,7 @@ struct JarvisApp: App {
                 .preferredColorScheme(.dark)
                 .tint(Theme.accent)
         }
-        .onChange(of: phase) { newPhase in
+        .onChange(of: phase) { _, newPhase in
             switch newPhase {
             case .active: model.setForeground(true)
             case .background:
