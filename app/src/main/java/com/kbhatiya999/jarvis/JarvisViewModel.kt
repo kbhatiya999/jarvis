@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import android.os.Handler
 import android.os.Looper
 import androidx.lifecycle.AndroidViewModel
+import com.kbhatiya999.jarvis.core.ActiveMode
 import com.kbhatiya999.jarvis.core.LiveSession
 
 class JarvisViewModel(app: Application) : AndroidViewModel(app) {
@@ -28,26 +29,27 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var wakeError by mutableStateOf<String?>(null)
         private set
-    var wakeOn by mutableStateOf(jarvis.active.wakeEnabled && WakeListener.Models.ready(app))
+    /** When the phone listens for "Jarvis ..." (ActiveMode.WAKE_*). */
+    var wakeMode by mutableStateOf(jarvis.active.wakeMode)
+        private set
+    /** The offline speech model is on the phone (needed for any mode but off). */
+    var wakeModelReady by mutableStateOf(WakeListener.Models.ready(app))
         private set
 
-    /** Turns voice commands on (downloading the model first if needed) or off. */
-    fun setWake(on: Boolean) {
+    /** Sets when Jarvis listens for its name, downloading the speech model first if that mode needs it. */
+    fun chooseWakeMode(mode: String) {
         val app = getApplication<Application>()
         wakeError = null
-        if (!on) {
-            jarvis.active.wakeEnabled = false
-            wakeOn = false
-            ActiveModeService.refreshWake(app)
-            return
-        }
-        if (WakeListener.Models.ready(app)) {
-            jarvis.active.wakeEnabled = true
-            wakeOn = true
-            ActiveModeService.refreshWake(app)
-            return
-        }
+        jarvis.active.wakeMode = mode
+        wakeMode = mode
+        ActiveModeService.refreshWake(app)
+        if (mode != ActiveMode.WAKE_OFF && !WakeListener.Models.ready(app)) downloadModel()
+    }
+
+    fun downloadModel() {
+        val app = getApplication<Application>()
         if (wakeDownload != null) return
+        wakeError = null
         wakeDownload = 0f
         Thread {
             var last = 0f
@@ -57,11 +59,8 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
             main.post {
                 wakeDownload = null
                 wakeError = error
-                if (error == null) {
-                    jarvis.active.wakeEnabled = true
-                    wakeOn = true
-                    ActiveModeService.refreshWake(app)
-                }
+                wakeModelReady = WakeListener.Models.ready(app)
+                ActiveModeService.refreshWake(app)
             }
         }.apply { name = "jarvis-model-download"; start() }
     }

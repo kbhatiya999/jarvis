@@ -33,7 +33,7 @@ import java.util.Locale
 /**
  * Active mode. Runs as a microphone foreground service (started while the app is open, which is
  * what lets it use the mic later from the background). When AppWatcher reports an app opening,
- * Jarvis speaks up on its own, then listens for 5 seconds; silence ends the session. With voice commands on,
+ * Jarvis speaks up on its own, then listens for your answer (8 seconds by default); silence ends the session. With voice commands on,
  * it also listens (offline) for "Jarvis wake up", "Jarvis power down" and "Jarvis" to cut it off.
  */
 class ActiveModeService : Service() {
@@ -59,6 +59,7 @@ class ActiveModeService : Service() {
     }
     private val recheckWake: Runnable = Runnable { refreshWake() }
     private var destroyed = false
+    private var clipsChecked = false
     private var shownText: String? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -97,12 +98,20 @@ class ActiveModeService : Service() {
     private fun refreshWake() {
         if (instance !== this || destroyed) return
         main.removeCallbacks(recheckWake)
-        val on = jarvis.active.wakeEnabled && WakeListener.Models.ready(this)
-        wakePaused = if (on) pauseReason() else null
+        val mode = jarvis.active.wakeMode
+        val ready = mode != ActiveMode.WAKE_OFF && WakeListener.Models.ready(this)
+        val always = ready && mode == ActiveMode.WAKE_ALWAYS
+        wakePaused = if (always) pauseReason() else null
         // Night starts and ends on the clock: look again in a while.
-        if (on) main.postDelayed(recheckWake, WAKE_RECHECK_MS)
-        // Never stop mid-conversation: "Jarvis power down" must keep working. end() looks again.
-        val want = on && (wakePaused == null || session != null)
+        if (always) main.postDelayed(recheckWake, WAKE_RECHECK_MS)
+        // Listening all the time, or (also while "always" rests to save battery) only during a conversation, so
+        // "Jarvis power down" and "Jarvis" to cut it off still work. startSession() and end() look again.
+        val want = ready && ((always && wakePaused == null) || session != null)
+        // Jarvis's own voice for the instant replies, recorded once (no-op when they exist).
+        if (ready && !clipsChecked && jarvis.apiKey.value != null) {
+            clipsChecked = true
+            clips.recordMissing()
+        }
         if (want && wake == null) {
             wake = WakeListener(
                 this,
@@ -110,8 +119,6 @@ class ActiveModeService : Service() {
                 onPowerDown = { main.post { powerDown() } },
                 onName = { main.post { nameSaid() } },
             ).also { it.start() }
-            // Jarvis's own voice for the instant replies, recorded once (no-op when they exist).
-            if (jarvis.apiKey.value != null) clips.recordMissing()
         } else if (!want && wake != null) {
             wake?.stop()
             wake = null
@@ -121,8 +128,8 @@ class ActiveModeService : Service() {
 
     private fun idleText() = when {
         wake != null -> "Say \"Jarvis wake up\""
-        wakePaused != null -> "Voice commands resting: $wakePaused"
-        else -> "Watching for app launches"
+        wakePaused != null -> "Resting ($wakePaused): say \"Hey Google, open Jarvis Talk\""
+        else -> "Say \"Hey Google, open Jarvis Talk\" to talk"
     }
 
     private fun pauseReason(): String? {
@@ -187,6 +194,7 @@ class ActiveModeService : Service() {
             ACTION_TEST -> appOpened("Jarvis test", force = true)
             ACTION_TALK -> talk()
             ACTION_REFRESH -> refreshWake()
+            ACTION_WAKE -> wakePhrase()
         }
         // Not sticky: a restart by the system would come from the background, where the mic is not allowed.
         return START_NOT_STICKY
@@ -264,6 +272,7 @@ class ActiveModeService : Service() {
             if (cue != null) it.sendText(cue)
         }
         main.postDelayed(endSession, MAX_SESSION_MS)
+        refreshWake() // "only during conversations": start listening for "Jarvis power down"
     }
 
     private fun allowedNow(pkg: String, ignoreCooldown: Boolean = false, allowLocked: Boolean = false): Boolean {
@@ -310,7 +319,7 @@ class ActiveModeService : Service() {
                 main.postDelayed(endSession, wait + 300)
                 return
             }
-            // Once Jarvis has finished speaking, open the mic and give the user 5 seconds.
+            // Once Jarvis has finished speaking, open the mic and give the user time to answer.
             main.removeCallbacks(startListening)
             main.postDelayed(startListening, wait + 300)
         }
@@ -446,6 +455,7 @@ class ActiveModeService : Service() {
         private const val ACTION_TEST = "com.kbhatiya999.jarvis.TEST"
         private const val ACTION_TALK = "com.kbhatiya999.jarvis.TALK"
         private const val ACTION_REFRESH = "com.kbhatiya999.jarvis.REFRESH_WAKE"
+        private const val ACTION_WAKE = "com.kbhatiya999.jarvis.WAKE"
         private const val END_FALLBACK_MS = 8_000L
         private const val WAKE_RECHECK_MS = 5 * 60_000L
 
@@ -476,6 +486,11 @@ class ActiveModeService : Service() {
         /** Only while the service runs (it holds the mic): Jarvis greets you and listens. */
         fun talk(context: Context) {
             context.startService(Intent(context, ActiveModeService::class.java).setAction(ACTION_TALK))
+        }
+
+        /** Like saying "Jarvis wake up": an instant reply, then it listens (e.g. from a Google Home routine). */
+        fun wake(context: Context) {
+            context.startService(Intent(context, ActiveModeService::class.java).setAction(ACTION_WAKE))
         }
 
         /** The wake phrase setting changed (or its model arrived). */

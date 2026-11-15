@@ -18,6 +18,31 @@
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
         android:theme="@android:style/Theme.Material.NoActionBar">
+        <!-- "Hey Google, Jarvis wake up" on the lock screen: a Google Home routine posts a notification. -->
+        <service
+            android:name=".RoutineListener"
+            android:exported="true"
+            android:label="@string/routine_listener_label"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+        <!-- "Hey Google, open Jarvis Talk": wakes Jarvis without showing anything. -->
+        <activity
+            android:name=".TalkActivity"
+            android:exported="true"
+            android:label="@string/talk_launcher_label"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:showWhenLocked="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
         <activity
             android:name=".MainActivity"
             android:exported="true"

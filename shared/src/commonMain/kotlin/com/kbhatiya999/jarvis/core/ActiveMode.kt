@@ -34,7 +34,7 @@ class ActiveMode internal constructor(private val jarvis: Jarvis) {
         set(v) = store.set(LOCKED, v.toString())
 
     /**
-     * What may cut Jarvis off while it speaks: [INTERRUPT_NAME] (saying "Jarvis", needs [wakeEnabled]),
+     * What may cut Jarvis off while it speaks: [INTERRUPT_NAME] (saying "Jarvis", needs [wakeMode] not off),
      * [INTERRUPT_ANY] (any talking) or [INTERRUPT_NEVER]. "Jarvis power down" always works.
      */
     var interruptMode: String
@@ -45,10 +45,15 @@ class ActiveMode internal constructor(private val jarvis: Jarvis) {
     /** Any talking cuts Jarvis off (the Live session's own interruption). */
     val interruptible: Boolean get() = interruptMode == INTERRUPT_ANY
 
-    /** Android: listen for "Jarvis wake up", "Jarvis power down" and "Jarvis" (offline, on the phone). */
-    var wakeEnabled: Boolean
-        get() = store.get(WAKE) == "true"
-        set(v) = store.set(WAKE, v.toString())
+    /**
+     * Android: when the phone listens (offline) for "Jarvis ...". [WAKE_ALWAYS]: all the time, so "Jarvis wake up"
+     * works anywhere. [WAKE_CONVERSATION]: only while Jarvis is talking with you ("Jarvis power down", "Jarvis" to
+     * cut it off); you start it with "Hey Google, open Jarvis Talk", Talk or the tile. [WAKE_OFF]: never.
+     */
+    var wakeMode: String
+        get() = store.get(WAKE_MODE)?.takeIf { it in WAKE_MODES }
+            ?: if (store.get(WAKE) == "true") WAKE_ALWAYS else WAKE_CONVERSATION // 0.8.x had an on/off switch
+        set(v) = store.set(WAKE_MODE, v.takeIf { it in WAKE_MODES } ?: WAKE_CONVERSATION)
 
     /** Voice commands rest from 11 pm to 7 am (unless charging), to save battery. */
     var wakePauseAtNight: Boolean
@@ -120,7 +125,7 @@ class ActiveMode internal constructor(private val jarvis: Jarvis) {
         fun cue(appName: String) = "(The user has just opened $appName. Speak up now.)"
 
         const val DEFAULT_COOLDOWN = 30 * 60
-        const val DEFAULT_LISTEN = 5
+        const val DEFAULT_LISTEN = 8
         const val INTERRUPT_NAME = "name"
         const val INTERRUPT_ANY = "any"
         const val INTERRUPT_NEVER = "never"
@@ -128,6 +133,11 @@ class ActiveMode internal constructor(private val jarvis: Jarvis) {
         val DEFAULT_WAKE_LINES = listOf("At your service, Sir.", "Yes, Sir?", "Listening.")
         val DEFAULT_POWER_LINES = listOf("Powering down, Sir.", "Standing by.", "As you wish.")
         const val DEFAULT_WAKE_MIN_BATTERY = 20
+        const val WAKE_ALWAYS = "always"
+        const val WAKE_CONVERSATION = "conversation"
+        const val WAKE_OFF = "off"
+        private val WAKE_MODES = setOf(WAKE_ALWAYS, WAKE_CONVERSATION, WAKE_OFF)
+        private const val WAKE_MODE = "wake_mode"
         private const val WAKE_NIGHT = "wake_pause_night"
         private const val WAKE_MIN_BATTERY = "wake_min_battery"
         private const val INTERRUPT_MODE = "interrupt_mode"

@@ -30,11 +30,11 @@ class ActiveModeTest {
         assertEquals(1800, active.cooldownSeconds)
         assertTrue(active.quietHours)
         // What the user picked as defaults: listen 5 s after Jarvis finishes, also on the lock screen, no interrupting.
-        assertEquals(5, active.listenSeconds)
+        assertEquals(8, active.listenSeconds)
         assertTrue(active.speakWhenLocked)
         assertFalse(active.interruptible)
         assertEquals(ActiveMode.INTERRUPT_NAME, active.interruptMode)
-        assertFalse(active.wakeEnabled)
+        assertEquals(ActiveMode.WAKE_CONVERSATION, active.wakeMode)
         assertTrue(active.wakePauseAtNight)
         assertEquals(20, active.wakeMinBattery)
         assertEquals(ActiveMode.DEFAULT_WAKE_LINES, active.wakeLines)
