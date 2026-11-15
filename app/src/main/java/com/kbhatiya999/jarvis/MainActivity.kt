@@ -1,5 +1,6 @@
 package com.kbhatiya999.jarvis
 
+import com.kbhatiya999.jarvis.core.Message
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -66,14 +67,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        Conversation.init(this)
-        Relay.schedule(this)
+        AndroidPlatform.jarvis(this)
+        RelayPollWorker.schedule(this)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(primary = Accent, background = Background, surface = Background)) {
                 Surface(Modifier.fillMaxSize(), color = Background) {
                     val vm: JarvisViewModel = viewModel()
                     when {
-                        vm.apiKey.isNullOrBlank() || vm.editingKey -> KeyScreen(vm)
+                        vm.jarvis.apiKey.observe().isNullOrBlank() || vm.editingKey -> KeyScreen(vm)
                         vm.screen == "active" -> ActiveScreen(vm)
                         vm.screen == "reminders" -> RemindersScreen(vm)
                         vm.screen == "contacts" -> ContactsScreen(vm)
@@ -87,17 +88,17 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         // Messages from other Jarvises arrive live while the app is open.
-        Relay.acquireStream(this)
+        AndroidPlatform.jarvis(this).relay.acquireStream()
     }
 
     override fun onStop() {
-        Relay.releaseStream()
+        AndroidPlatform.jarvis(this).relay.releaseStream()
         super.onStop()
     }
 
     override fun onResume() {
         super.onResume()
-        Relay.pollAsync(this)
+        AndroidPlatform.jarvis(this).relay.pollAsync()
         // Active mode can only (re)start while the app is in front, e.g. after a reboot.
         val settings = Settings(this)
         val mic = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -110,7 +111,7 @@ private fun KeyScreen(vm: JarvisViewModel) {
     val uri = LocalUriHandler.current
     var key by remember { mutableStateOf("") }
     var show by remember { mutableStateOf(false) }
-    val current = vm.apiKey
+    val current = vm.jarvis.apiKey.observe()
 
     Column(
         Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(24.dp),
@@ -159,8 +160,10 @@ private fun ChatScreen(vm: JarvisViewModel) {
         if (granted) vm.toggleVoice()
     }
 
-    LaunchedEffect(vm.messages.size, vm.messages.lastOrNull()?.text?.length) {
-        if (vm.messages.isNotEmpty()) listState.animateScrollToItem(vm.messages.lastIndex)
+    val messages = vm.jarvis.conversation.messages.observe()
+    val requests = vm.jarvis.contacts.requests.observe()
+    LaunchedEffect(messages.size, messages.lastOrNull()?.text?.length) {
+        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
     }
 
     Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
@@ -171,12 +174,12 @@ private fun ChatScreen(vm: JarvisViewModel) {
                 Text(vm.status, fontSize = 12.sp, color = if (vm.connected) Accent else Color.Gray)
             }
             Box {
-                TextButton(onClick = { menu = true }) { Text(if (Contacts.requests.isEmpty()) "Settings" else "Settings •") }
+                TextButton(onClick = { menu = true }) { Text(if (requests.isEmpty()) "Settings" else "Settings •") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("Active mode") }, onClick = { menu = false; vm.screen = "active" })
                     DropdownMenuItem(text = { Text("Reminders") }, onClick = { menu = false; vm.screen = "reminders" })
                     DropdownMenuItem(
-                        text = { Text(if (Contacts.requests.isEmpty()) "Contacts" else "Contacts (${Contacts.requests.size} new)") },
+                        text = { Text(if (requests.isEmpty()) "Contacts" else "Contacts (${requests.size} new)") },
                         onClick = { menu = false; vm.screen = "contacts" },
                     )
                     DropdownMenuItem(text = { Text("Change API key") }, onClick = { menu = false; vm.editingKey = true })
@@ -191,10 +194,10 @@ private fun ChatScreen(vm: JarvisViewModel) {
             modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (vm.messages.isEmpty()) {
+            if (messages.isEmpty()) {
                 item { Text("All systems operational. Tap Talk or type a message.", color = Color.Gray, modifier = Modifier.padding(8.dp)) }
             }
-            items(vm.messages) { m -> Bubble(m) }
+            items(messages) { m -> Bubble(m) }
         }
 
         // Input

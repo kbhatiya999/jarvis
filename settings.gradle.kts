@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "jarvis"
-include(":app")
+include(":app", ":shared")

@@ -37,6 +37,7 @@ step('keystore-gen', 'keystore:gen', 'setup')
 step('secrets-push', 'secrets:push', 'setup')
 
 step('lint', 'lint', 'build')
+step('test', 'test', 'build')
 step('build', 'build', 'build')
 step('build-ci', 'build:ci', 'build')  # same build, on GitHub Actions
 
@@ -51,7 +52,7 @@ step('release-ci', 'release:ci', 'release')  # the release pipeline, on GitHub A
 
 # ---- pipelines
 # release: everything happens on this Mac; GitHub only stores the release for Obtainium.
-pipeline('release', ['release-check', 'lint', 'build', 'release-publish'])
+pipeline('release', ['release-check', 'lint', 'test', 'build', 'release-publish'])
 
 # ---- buttons with input boxes
 cmd_button(

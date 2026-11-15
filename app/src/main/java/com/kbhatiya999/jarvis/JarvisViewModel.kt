@@ -5,17 +5,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
+import com.kbhatiya999.jarvis.core.LiveSession
 
 class JarvisViewModel(app: Application) : AndroidViewModel(app) {
-    private val keyStore = ApiKeyStore(app)
+    val jarvis = AndroidPlatform.jarvis(app)
     val settings = Settings(app)
 
-    var apiKey by mutableStateOf(keyStore.get())
-        private set
     var editingKey by mutableStateOf(false)
     /** Which screen is showing over the chat: null, "active", "reminders" or "contacts". */
     var screen by mutableStateOf<String?>(null)
-    val messages get() = Conversation.messages
     var status by mutableStateOf("Standing by")
         private set
     var connected by mutableStateOf(false)
@@ -26,22 +24,17 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     private var session: LiveSession? = null
     // Callbacks from a session that was already replaced are ignored.
     private var currentToken = Any()
-    private var writer = Conversation.Writer()
-
-    init {
-        Conversation.init(app)
-    }
+    private var writer = jarvis.conversation.newWriter()
 
     fun saveKey(key: String) {
-        keyStore.set(key.trim())
-        apiKey = key.trim()
+        jarvis.saveApiKey(key)
         editingKey = false
         endSession() // reconnect with the new key next time
     }
 
     fun clearMemory() {
         endSession()
-        Conversation.clear()
+        jarvis.conversation.clear()
     }
 
     fun toggleVoice() {
@@ -76,10 +69,8 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         session?.let { return it }
         status = "Connecting"
         val token = Any().also { currentToken = it }
-        writer = Conversation.Writer()
-        return LiveSession(apiKey ?: "", Conversation.systemPrompt(), Callbacks(token)) { name, args, reply ->
-            JarvisTools.call(getApplication(), name, args, reply)
-        }.also {
+        writer = jarvis.conversation.newWriter()
+        return jarvis.newSession(jarvis.systemPrompt(), Callbacks(token)).also {
             session = it
             it.connect()
         }
@@ -108,6 +99,6 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         endSession()
-        Conversation.save()
+        jarvis.conversation.save()
     }
 }

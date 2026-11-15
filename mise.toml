@@ -3,7 +3,7 @@ min_version = "2026.1.0"
 # mise provides everything the project needs, including the Android SDK.
 [tools]
 java = "17"
-gradle = "8.10.2"
+gradle = "8.14.3"
 android-sdk = "latest"
 tilt = "latest"
 fnox = "latest"
@@ -57,6 +57,10 @@ run = "scripts/tilt-run.sh install"
 [tasks."tilt:lint"]
 description = "Run Android lint"
 run = "scripts/tilt-run.sh lint"
+
+[tasks."tilt:test"]
+description = "Run the unit tests (shared Kotlin code)"
+run = "scripts/tilt-run.sh test"
 
 [tasks."tilt:build"]
 description = "Build the signed APK (the only build; release and install use it too)"
@@ -135,6 +139,12 @@ hide = true
 description = "Android lint"
 depends = ["setup"]
 run = "scripts/run.sh ./gradlew --no-daemon lintRelease"
+
+[tasks.test]
+hide = true
+description = "Unit tests of the shared module"
+depends = ["setup"]
+run = "scripts/run.sh ./gradlew --no-daemon :shared:testDebugUnitTest"
 
 [tasks.build]
 hide = true

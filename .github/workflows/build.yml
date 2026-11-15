@@ -27,6 +27,8 @@ jobs:
           echo "SIGNING_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
       - name: lint
         run: mise run -q lint
+      - name: test
+        run: mise run -q test
       - name: build
         run: mise run -q build
       - uses: actions/upload-artifact@v4

@@ -1,5 +1,9 @@
 package com.kbhatiya999.jarvis
 
+import com.kbhatiya999.jarvis.core.Conversation
+import com.kbhatiya999.jarvis.core.Jarvis
+import com.kbhatiya999.jarvis.core.LiveSession
+import com.kbhatiya999.jarvis.core.Prompts
 import android.app.KeyguardManager
 import android.app.Notification
 import android.app.NotificationChannel
@@ -33,9 +37,10 @@ import java.util.Locale
 class ActiveModeService : Service() {
     private val main = Handler(Looper.getMainLooper())
     private lateinit var settings: Settings
+    private lateinit var jarvis: Jarvis
     private var session: LiveSession? = null
     private var token = Any()
-    private var writer = Conversation.Writer()
+    private var writer: Conversation.Writer? = null
     private var micOn = false
     private var focus: AudioFocusRequest? = null
     private val endSession = Runnable { end() }
@@ -46,7 +51,7 @@ class ActiveModeService : Service() {
     override fun onCreate() {
         super.onCreate()
         settings = Settings(this)
-        Conversation.init(this)
+        jarvis = AndroidPlatform.jarvis(this)
         createChannel()
         try {
             val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0
@@ -59,7 +64,8 @@ class ActiveModeService : Service() {
             return
         }
         instance = this
-        Relay.acquireStream(this)
+        jarvis.onMessageArrived = { messageArrived() }
+        jarvis.relay.acquireStream()
         streaming = true
     }
 
@@ -77,18 +83,21 @@ class ActiveModeService : Service() {
 
     override fun onDestroy() {
         end()
-        if (streaming) Relay.releaseStream()
+        if (streaming) jarvis.relay.releaseStream()
         streaming = false
-        if (instance === this) instance = null
+        if (instance === this) {
+            instance = null
+            jarvis.onMessageArrived = null
+        }
         super.onDestroy()
     }
 
     private fun appOpened(pkgOrName: String, force: Boolean = false) {
         if (session != null) return
         if (!force && !allowedNow(pkgOrName)) return
-        if (ApiKeyStore(this).get() == null) return
+        if (jarvis.apiKey.value == null) return
         val name = appLabel(pkgOrName)
-        val pending = Inbox.takePending(this)
+        val pending = jarvis.inbox.takePending()
         startSession(Prompts.proactive(name, now(), pending), "(The user has just opened $name. Speak up now.)")
     }
 
@@ -96,12 +105,12 @@ class ActiveModeService : Service() {
     private fun messageArrived() {
         val s = session
         if (s != null) {
-            val pending = Inbox.takePending(this)
+            val pending = jarvis.inbox.takePending()
             if (pending.isNotEmpty()) s.sendText("(New message just arrived: ${pending.joinToString(" | ")}. Relay it to the user now.)")
             return
         }
-        if (!allowedNow("", ignoreCooldown = true) || ApiKeyStore(this).get() == null) return
-        val pending = Inbox.takePending(this)
+        if (!allowedNow("", ignoreCooldown = true) || jarvis.apiKey.value == null) return
+        val pending = jarvis.inbox.takePending()
         if (pending.isEmpty()) return
         startSession(Prompts.relay(pending, now()), "(Messages just arrived. Relay them now.)")
     }
@@ -109,15 +118,14 @@ class ActiveModeService : Service() {
     private fun now() = SimpleDateFormat("h:mm a, EEEE", Locale.getDefault()).format(Date())
 
     private fun startSession(prompt: String, cue: String) {
-        val key = ApiKeyStore(this).get() ?: return
+        if (jarvis.apiKey.value == null) return
         settings.lastPromptAt = System.currentTimeMillis()
         val t = Any().also { token = it }
-        writer = Conversation.Writer()
+        writer = jarvis.conversation.newWriter()
         micOn = false
         requestFocus()
         update("Speaking")
-        val tools = { n: String, a: org.json.JSONObject, r: (org.json.JSONObject) -> Unit -> JarvisTools.call(this, n, a, r) }
-        session = LiveSession(key, Conversation.systemPrompt(prompt), Callbacks(t), tools).also {
+        session = jarvis.newSession(jarvis.systemPrompt(prompt), Callbacks(t)).also {
             it.connect()
             // Cue for Jarvis to start talking. Not stored in memory.
             it.sendText(cue)
@@ -148,7 +156,7 @@ class ActiveModeService : Service() {
 
         override fun onUserText(delta: String) {
             if (!live()) return
-            writer.userDelta(delta)
+            writer?.userDelta(delta)
             // They're talking: keep the session, but don't hang forever if Jarvis never answers.
             main.removeCallbacks(listenTimeout)
             main.postDelayed(listenTimeout, REPLY_WAIT_MS)
@@ -157,14 +165,14 @@ class ActiveModeService : Service() {
 
         override fun onJarvisText(delta: String) {
             if (!live()) return
-            writer.jarvisDelta(delta)
+            writer?.jarvisDelta(delta)
             main.removeCallbacks(listenTimeout)
             update("Speaking")
         }
 
         override fun onTurnComplete() {
             if (!live()) return
-            writer.closeTurn()
+            writer?.closeTurn()
             // Once Jarvis has finished speaking, open the mic and give the user 5 seconds.
             val wait = session?.playbackRemainingMs() ?: 0
             main.removeCallbacks(startListening)
@@ -172,7 +180,7 @@ class ActiveModeService : Service() {
         }
 
         override fun onInterrupted() {
-            if (live()) writer.closeTurn()
+            if (live()) writer?.closeTurn()
         }
 
         override fun onClosed(reason: String?) {
@@ -203,7 +211,7 @@ class ActiveModeService : Service() {
         session?.close()
         session = null
         micOn = false
-        writer.closeTurn()
+        writer?.closeTurn()
         abandonFocus()
         if (instance === this) update("Watching for app launches")
     }
@@ -276,11 +284,6 @@ class ActiveModeService : Service() {
         /** Called by AppWatcher on the main thread. */
         fun onAppOpened(pkg: String) {
             instance?.appOpened(pkg)
-        }
-
-        /** Called by Inbox on the main thread. */
-        fun onMessageArrived() {
-            instance?.messageArrived()
         }
 
         fun start(context: Context) {

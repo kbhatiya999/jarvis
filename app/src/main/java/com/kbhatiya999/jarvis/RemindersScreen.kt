@@ -36,11 +36,13 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 fun RemindersScreen(vm: JarvisViewModel) {
+    val reminders = vm.jarvis.reminders
+    val items = reminders.items.observe()
     var input by remember { mutableStateOf("") }
     BackHandler { vm.screen = null }
 
     fun add() {
-        if (Reminders.add(input)) input = ""
+        if (reminders.add(input)) input = ""
     }
 
     Column(
@@ -57,11 +59,11 @@ fun RemindersScreen(vm: JarvisViewModel) {
             color = Color.LightGray,
         )
         HorizontalDivider()
-        if (Reminders.items.isEmpty()) Text("No reminders. Jarvis will only relay messages and make brief remarks.", color = Color.Gray)
-        Reminders.items.forEachIndexed { i, r ->
+        if (items.isEmpty()) Text("No reminders. Jarvis will only relay messages and make brief remarks.", color = Color.Gray)
+        items.forEachIndexed { i, r ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("•  $r", Modifier.weight(1f))
-                TextButton(onClick = { Reminders.removeAt(i) }) { Text("Remove", color = Color(0xFFE57373)) }
+                TextButton(onClick = { reminders.removeAt(i) }) { Text("Remove", color = Color(0xFFE57373)) }
             }
         }
         HorizontalDivider()
@@ -78,7 +80,7 @@ fun RemindersScreen(vm: JarvisViewModel) {
             Spacer(Modifier.width(8.dp))
             Button(onClick = { add() }, enabled = input.isNotBlank()) { Text("Add") }
         }
-        TextButton(onClick = { Reminders.resetToDefaults() }) { Text("Reset to the default four") }
+        TextButton(onClick = { reminders.resetToDefaults() }) { Text("Reset to the default four") }
         Spacer(Modifier.height(24.dp))
     }
 }

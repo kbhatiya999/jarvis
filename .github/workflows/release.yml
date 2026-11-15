@@ -42,6 +42,8 @@ jobs:
         run: scripts/tilt-input.sh version "${{ inputs.version }}" && mise run -q release:check
       - name: lint
         run: mise run -q lint
+      - name: test
+        run: mise run -q test
       - name: build
         run: mise run -q build
       - name: release-publish

@@ -1,5 +1,6 @@
 package com.kbhatiya999.jarvis
 
+import com.kbhatiya999.jarvis.core.Contact
 import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -49,8 +50,11 @@ import androidx.core.content.ContextCompat
 @Composable
 fun ContactsScreen(vm: JarvisViewModel) {
     val context = LocalContext.current
-    val me = remember { Identity.get(context) }
-    var myName by remember { mutableStateOf(Contacts.myName) }
+    val book = vm.jarvis.contacts
+    val me = remember { vm.jarvis.identity }
+    val contacts = book.contacts.observe()
+    val requests = book.requests.observe()
+    var myName by remember { mutableStateOf(book.myName.value) }
     var newName by remember { mutableStateOf("") }
     var newAddress by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -83,7 +87,7 @@ fun ContactsScreen(vm: JarvisViewModel) {
         Text("Your Jarvis", fontWeight = FontWeight.Bold)
         OutlinedTextField(
             value = myName,
-            onValueChange = { myName = it.take(40); Contacts.updateMyName(myName) },
+            onValueChange = { myName = it.take(40); book.updateMyName(myName) },
             label = { Text("Your name (what friends' Jarvises call you)") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
@@ -99,28 +103,28 @@ fun ContactsScreen(vm: JarvisViewModel) {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = {
-                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, Contacts.shareText(me.address))
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, book.shareText(me.address))
                 context.startActivity(Intent.createChooser(send, "Share your Jarvis address"))
             }) { Text("Share") }
             OutlinedButton(onClick = {
                 context.getSystemService(ClipboardManager::class.java)
-                    .setPrimaryClip(ClipData.newPlainText("Jarvis address", Contacts.shareText(me.address)))
+                    .setPrimaryClip(ClipData.newPlainText("Jarvis address", book.shareText(me.address)))
             }) { Text("Copy") }
         }
         Text("Send this to a friend who uses Jarvis; they add it under Contacts. Add theirs here too.", fontSize = 13.sp, color = Color.Gray)
 
-        if (Contacts.requests.isNotEmpty()) {
+        if (requests.isNotEmpty()) {
             HorizontalDivider()
             Text("Requests", fontWeight = FontWeight.Bold)
-            Contacts.requests.toList().forEach { r ->
+            requests.forEach { r ->
                 Column(Modifier.fillMaxWidth().background(Color(0xFF2A2A1E), RoundedCornerShape(10.dp)).padding(12.dp)) {
                     Text("${r.name}'s Jarvis (not in your contacts) says:", fontSize = 13.sp, color = Color(0xFFFFE082))
                     Text(r.text)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = {
-                            if (Contacts.add(r.name, r.address) == null) Inbox.receive(context, r.name, r.text)
+                            vm.jarvis.acceptRequest(r)
                         }) { Text("Accept") }
-                        TextButton(onClick = { Contacts.dismissRequest(r) }) { Text("Ignore") }
+                        TextButton(onClick = { book.dismissRequest(r) }) { Text("Ignore") }
                     }
                 }
             }
@@ -134,7 +138,7 @@ fun ContactsScreen(vm: JarvisViewModel) {
             onValueChange = { v ->
                 newAddress = v
                 error = null
-                if (newName.isBlank()) Contacts.extractName(v)?.let { newName = it }
+                if (newName.isBlank()) book.extractName(v)?.let { newName = it }
             },
             label = { Text("Their Jarvis address") },
             placeholder = { Text("Paste what they shared") },
@@ -151,7 +155,7 @@ fun ContactsScreen(vm: JarvisViewModel) {
         error?.let { Text(it, color = Color(0xFFE57373), fontSize = 13.sp) }
         Button(
             onClick = {
-                error = if (Contacts.extractAddress(newAddress) == me.address) "That's your own address." else Contacts.add(newName, newAddress)
+                error = if (book.extractAddress(newAddress) == me.address) "That's your own address." else book.add(newName, newAddress)
                 if (error == null) { newName = ""; newAddress = "" }
             },
             enabled = newAddress.isNotBlank(),
@@ -159,8 +163,8 @@ fun ContactsScreen(vm: JarvisViewModel) {
 
         HorizontalDivider()
         Text("Contacts", fontWeight = FontWeight.Bold)
-        if (Contacts.contacts.isEmpty()) Text("None yet.", color = Color.Gray)
-        Contacts.contacts.toList().forEach { c ->
+        if (contacts.isEmpty()) Text("None yet.", color = Color.Gray)
+        contacts.forEach { c ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(c.name, Modifier.weight(1f))
                 TextButton(onClick = { confirmRemove = c }) { Text("Remove", color = Color(0xFFE57373)) }
@@ -169,7 +173,7 @@ fun ContactsScreen(vm: JarvisViewModel) {
         confirmRemove?.let { c ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Remove ${c.name}?", Modifier.weight(1f))
-                TextButton(onClick = { Contacts.remove(c); confirmRemove = null }) { Text("Remove") }
+                TextButton(onClick = { book.remove(c); confirmRemove = null }) { Text("Remove") }
                 TextButton(onClick = { confirmRemove = null }) { Text("Cancel") }
             }
         }
