@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Step: decide the release version and make sure releasing it is safe.
 # Uses .tilt-inputs/version if given, else the next patch; writes the result back there
-# so the following steps (build-release, release-publish) use the same version.
+# so the following steps (build, release-publish) use the same version.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p .tilt-inputs

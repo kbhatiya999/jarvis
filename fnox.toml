@@ -4,10 +4,9 @@
 # Run anything with:  fnox exec -- <cmd>   (mise tasks already do this)
 
 [secrets]
-APP_VERSION = { default = "0.0.0-dev", description = "Version name baked into the APK (CI sets it from the git tag)" }
+APP_VERSION = { default = "0.0.0-dev", description = "Version name baked into the APK (set by scripts/build-release.sh)" }
 APP_VERSION_CODE = { default = "", description = "Android versionCode override; empty = minutes since 2020 (always increases)", if_missing = "ignore" }
-SIGNING_KEYSTORE_PATH = { default = "", description = "Path to the release keystore (CI decodes it from a secret)", if_missing = "ignore" }
+SIGNING_KEYSTORE_PATH = { default = "", description = "Path to the release keystore", if_missing = "ignore" }
 SIGNING_STORE_PASSWORD = { default = "", description = "Keystore password; set in fnox.local.toml", if_missing = "ignore" }
 SIGNING_KEY_ALIAS = { default = "jarvis", description = "Key alias in the keystore", if_missing = "ignore" }
 SIGNING_KEY_PASSWORD = { default = "", description = "Key password; set in fnox.local.toml", if_missing = "ignore" }
-SIGNING_KEYSTORE_B64 = { default = "", description = "Base64 keystore, uploaded to GitHub secrets by `mise run secrets:push`", if_missing = "ignore" }

@@ -41,7 +41,7 @@ description = "Recent logs: mise run tilt:logs [name]"
 usage = 'arg "[name]" help="Step or pipeline; all if omitted"'
 run = 'scripts/tilt-ensure.sh && tilt logs --since 30m ${usage_name:-}'
 
-# ---- pipelines
+# ---- the usual two
 
 [tasks."tilt:release"]
 description = "Release from this Mac: check -> lint -> signed build -> publish for Obtainium"
@@ -49,7 +49,7 @@ usage = 'arg "[version]" help="x.y.z; defaults to the next patch"'
 run = 'scripts/tilt-input.sh version "${usage_version:-}" && scripts/tilt-run.sh release'
 
 [tasks."tilt:install"]
-description = "Install on the phone: signed build -> adb install (upgrades the Obtainium copy)"
+description = "Install on the phone: signed dev build -> adb install (upgrades the Obtainium copy)"
 run = "scripts/tilt-run.sh install"
 
 # ---- steps
@@ -59,12 +59,8 @@ description = "Run Android lint"
 run = "scripts/tilt-run.sh lint"
 
 [tasks."tilt:build"]
-description = "Build the debug APK"
+description = "Build the signed APK (the only build; release and install use it too)"
 run = "scripts/tilt-run.sh build"
-
-[tasks."tilt:build-release"]
-description = "Build the signed release APK"
-run = "scripts/tilt-run.sh build-release"
 
 [tasks."tilt:devices"]
 description = "List phones adb can see"
@@ -87,11 +83,6 @@ description = "Connect to the paired phone over Wi-Fi"
 usage = 'arg "[address]" help="IP:port from the Wireless debugging screen; found automatically if omitted"'
 run = 'scripts/tilt-input.sh connect-address "${usage_address:-}" && scripts/tilt-run.sh phone-connect'
 
-[tasks."tilt:release-ci"]
-description = "Fallback: have GitHub Actions build and publish the release"
-usage = 'arg "[version]" help="x.y.z; defaults to the next patch"'
-run = 'scripts/tilt-input.sh version "${usage_version:-}" && scripts/tilt-run.sh release-ci'
-
 [tasks."tilt:env-check"]
 description = "Check the fnox environment"
 run = "scripts/tilt-run.sh env-check"
@@ -103,10 +94,6 @@ run = "scripts/tilt-run.sh setup"
 [tasks."tilt:keystore-gen"]
 description = "Create the release signing key (once)"
 run = "scripts/tilt-run.sh keystore-gen"
-
-[tasks."tilt:secrets-push"]
-description = "Copy signing secrets to GitHub (only for tilt:release-ci)"
-run = "scripts/tilt-run.sh secrets-push"
 
 # ================================================================ steps (hidden; run by Tilt)
 
@@ -125,28 +112,17 @@ hide = true
 description = "Create the release signing key once; details go to fnox.local.toml (plain text)"
 run = "scripts/gen-keystore.sh"
 
-[tasks."secrets:push"]
-hide = true
-description = "Copy signing secrets from fnox.local.toml to GitHub Actions"
-run = "scripts/push-secrets.sh"
-
 [tasks.lint]
 hide = true
 description = "Android lint"
 depends = ["setup"]
-run = "scripts/run.sh ./gradlew --no-daemon lint"
+run = "scripts/run.sh ./gradlew --no-daemon lintRelease"
 
 [tasks.build]
 hide = true
-description = "Debug APK"
+description = "Signed APK (the one build path)"
 depends = ["setup"]
-run = "scripts/run.sh ./gradlew --no-daemon assembleDebug"
-
-[tasks."build:release"]
-hide = true
-description = "Signed release APK"
-depends = ["setup"]
-run = "scripts/build-release.sh"
+run = "scripts/build.sh"
 
 [tasks.clean]
 hide = true
@@ -171,11 +147,11 @@ description = "adb connect to the paired phone"
 depends = ["setup"]
 run = "scripts/phone-connect.sh"
 
-[tasks."install:apk"]
+[tasks.install]
+description = "Signed dev build, then install on the phone"
 hide = true
-description = "adb install the last release build"
 depends = ["setup"]
-run = "scripts/install-apk.sh"
+run = "scripts/install.sh"
 
 [tasks."release:check"]
 hide = true
@@ -186,11 +162,6 @@ run = "scripts/release-check.sh"
 hide = true
 description = "Tag and publish the GitHub release with the APK"
 run = "scripts/release-publish.sh"
-
-[tasks."release:ci"]
-hide = true
-description = "Start the manual GitHub Actions release"
-run = "scripts/release-ci.sh"
 
 [tasks."version:next"]
 hide = true

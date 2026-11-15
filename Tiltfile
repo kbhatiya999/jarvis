@@ -3,7 +3,10 @@ load('ext://uibutton', 'cmd_button', 'text_input')
 # The Jarvis workflow, as seen in Tilt (http://localhost:10350).
 #
 #   steps      one resource per job; each runs one hidden mise task
-#   pipelines  press steps in order and stop at the first failure (release, install)
+#   pipelines  press steps in order and stop at the first failure (release)
+#
+# There is one way to make an APK: the build step (signed with the release key). release and
+# install both use it, so every copy on any phone can update any other.
 #
 # Nothing runs by itself: not on start, save or commit. Press a button here, or run
 # `mise run tilt:<name>` in a terminal: it presses the same button, streams the log and
@@ -21,8 +24,8 @@ def step(name, task, label):
                    trigger_mode=TRIGGER_MODE_MANUAL, auto_init=False, allow_parallel=True)
 
 
-def pipeline(name, steps, before=''):
-    local_resource(name, cmd=logged(name, before + 'scripts/tilt-run.sh ' + ' '.join(steps)), labels=['pipelines'],
+def pipeline(name, steps):
+    local_resource(name, cmd=logged(name, 'scripts/tilt-run.sh ' + ' '.join(steps)), labels=['pipelines'],
                    trigger_mode=TRIGGER_MODE_MANUAL, auto_init=False, allow_parallel=True)
 
 
@@ -30,36 +33,26 @@ def pipeline(name, steps, before=''):
 step('setup', 'setup', 'setup')
 step('env-check', 'env:check', 'setup')
 step('keystore-gen', 'keystore:gen', 'setup')
-step('secrets-push', 'secrets:push', 'setup')
 
 step('lint', 'lint', 'build')
 step('build', 'build', 'build')
-step('build-release', 'build:release', 'build')
 
 step('devices', 'devices', 'phone')
 step('phone-pair', 'phone:pair', 'phone')
 step('phone-connect', 'phone:connect', 'phone')
-step('install-apk', 'install:apk', 'phone')
+step('install', 'install', 'phone')  # dev build -> adb install
 
 step('release-check', 'release:check', 'release')
 step('release-publish', 'release:publish', 'release')
-step('release-ci', 'release:ci', 'release')
 
 # ---- pipelines
-# install: build with the release key, then put it on the phone ("-local" version name).
-pipeline('install', ['build-release', 'install-apk'], before='scripts/tilt-input.sh version && ')
 # release: everything happens on this Mac; GitHub only stores the release for Obtainium.
-pipeline('release', ['release-check', 'lint', 'build-release', 'release-publish'])
+pipeline('release', ['release-check', 'lint', 'build', 'release-publish'])
 
 # ---- buttons with input boxes
 cmd_button(
     name='release-with-version', resource='release', icon_name='rocket_launch', text='Release version',
     argv=['sh', '-c', 'scripts/tilt-input.sh version "$VERSION" && tilt trigger release'],
-    inputs=[text_input('VERSION', label='Version (x.y.z)', placeholder='empty = next patch')],
-)
-cmd_button(
-    name='release-ci-with-version', resource='release-ci', icon_name='cloud_upload', text='CI release version',
-    argv=['sh', '-c', 'scripts/tilt-input.sh version "$VERSION" && tilt trigger release-ci'],
     inputs=[text_input('VERSION', label='Version (x.y.z)', placeholder='empty = next patch')],
 )
 cmd_button(

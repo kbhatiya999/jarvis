@@ -8,7 +8,7 @@ A voice assistant in the J.A.R.V.I.S. persona, built on the Gemini Live API. It'
 - Tap **Talk** to speak, or type a message. Jarvis replies by voice (voice "Charon"), and both sides show up as text.
 - The conversation is saved on the phone and fed back to Jarvis at the start of each session, so it remembers earlier chats. **Settings → Forget conversation** wipes it.
 - **Active mode** (Settings → Active mode): when you open an app, Jarvis speaks up on its own. It works through your reminders, choosing and combining them itself, and passes on any messages from other Jarvises. It then listens for 5 seconds and stops if you stay silent. Setup:
-  1. Turn on "Jarvis active mode" under Accessibility. If it's greyed out, go to App info → ⋮ → Allow restricted settings first.
+  1. Turn on "Jarvis active mode" under Accessibility. Android blocks this for apps not installed from an app store. Tap the switch once so the "Restricted setting" popup appears; only after that does App info → ⋮ (top right) show **Allow restricted settings**. Allow it, then turn the switch on again. Uninstalling resets this.
   2. Flip the Active mode switch. A "Jarvis active" notification stays while it runs.
   - It speaks at most once per cooldown (30 min by default). It stays silent during quiet hours (11 pm–7 am), calls, Do Not Disturb, silent mode, and on the lock screen.
 - **Reminders** (Settings → Reminders): each person keeps their own list on their phone. It starts with water, junk and oily food, staying warm, and not getting hurt. Add or remove items there, or just tell Jarvis "remind me to stretch" or "stop reminding me about water".
@@ -37,7 +37,7 @@ Tools come from [mise](https://mise.jdx.dev/), including the Android SDK. Env an
 **Everything goes through `tilt:` tasks.** `mise run tilt:<name>` presses that button in Tilt, starting Tilt in the background if needed. It streams the log to your terminal and waits for the result, so every run also appears in the dashboard at http://localhost:10350. `mise tasks` lists only these. The individual steps are hidden mise tasks that Tilt runs. Nothing runs automatically: not on save, commit or push.
 
 ```bash
-mise install                 # java, gradle, android-sdk, tilt, fnox, gh
+mise install                 # java, gradle, android-sdk, tilt, fnox, gh (gh publishes releases)
 mise tasks                   # the tilt:* commands
 mise run tilt:status         # every step and pipeline, with its last result
 mise run tilt:logs [name]
@@ -47,13 +47,22 @@ In Tilt, resources are grouped into:
 
 | Group | Resources |
 |---|---|
-| pipelines | **release** (release-check → lint → build-release → release-publish), **install** (build-release → install-apk) |
-| setup | setup, env-check, keystore-gen, secrets-push |
-| build | lint, build, build-release |
-| phone | devices, phone-pair, phone-connect, install-apk |
-| release | release-check, release-publish, release-ci |
+| pipelines | **release** (release-check → lint → build → release-publish) |
+| setup | setup, env-check, keystore-gen |
+| build | lint, build |
+| phone | devices, phone-pair, phone-connect, install |
+| release | release-check, release-publish |
 
 A pipeline presses its steps in order and stops at the first failure. Each step keeps its own log and status.
+
+**There is one way to make an APK: the `build` step.** It is always signed with the release key, and both `release` and `install` use it. So a copy from Obtainium and a copy installed from your Mac can update each other. Only the version name differs:
+
+| Made by | Version name |
+|---|---|
+| `tilt:release 0.6.0` | `v0.6.0` |
+| `tilt:install` / `tilt:build` | `v0.6.0-dev+<commit>` (latest release + the commit; `.dirty` if uncommitted changes) |
+
+After a dev install, Obtainium may show the latest release as an update. That's expected, and the next release installs normally.
 
 ### Environment (fnox)
 
@@ -72,12 +81,12 @@ Everything happens on your Mac. It checks you're on `main` with a clean tree and
 
 One-time setup: `mise run tilt:keystore-gen` creates the signing key in `.secrets/` and `fnox.local.toml`. Back both up: if the key is lost, installed copies can no longer be updated.
 
-Fallback: `mise run tilt:release-ci [x.y.z]` has GitHub Actions build and publish instead. It needs `mise run tilt:secrets-push` once. The GitHub workflows only run when started like this or by hand.
+There is no CI: GitHub only hosts the code and the releases.
 
 ### Phone
 
 ```bash
 mise run tilt:phone-pair <ip:port> <code>   # once: Wireless debugging -> Pair device with pairing code
 mise run tilt:phone-connect                 # finds the paired phone on Wi-Fi
-mise run tilt:install                       # signed build, installs over the Obtainium copy
+mise run tilt:install                       # signed dev build, installs over the Obtainium copy
 ```
