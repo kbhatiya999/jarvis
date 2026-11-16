@@ -66,16 +66,24 @@ private val LISTEN_PRESETS = listOf(3, 5, 8, 12, 20)
 private val COOLDOWN_PRESETS = listOf(0 to "Every open", 30 to "30 s", 300 to "5 min", 900 to "15 min", 1800 to "30 min", 3600 to "1 h")
 private val BATTERY_PRESETS = listOf(0, 15, 20, 30, 50)
 
-/** Google Home's automation editor, in its order (labels may differ slightly between app versions). */
+/** The words to type in Google Home: the automation's name, the "Hey Google" phrase and the notification text. */
+private const val ROUTINE_PHRASE = "Jarvis wake up"
+
+/**
+ * Google Home's automation editor, in its order and with its labels. Steps with [RoutineStep.copy] get a Copy
+ * button for the text to type there.
+ */
+private data class RoutineStep(val text: String, val copy: String? = null)
+
 private val ROUTINE_STEPS = listOf(
-    "Automations tab › + (Add) › Personal (works with your voice only).",
-    "Name: \"Jarvis wake up\" (any name works; it's only for you).",
-    "Starter › Add starter › \"When I say to Google Assistant\" (or \"to my Assistant\") › type \"Jarvis wake up\". " +
-        "You can add another phrase, e.g. \"wake up Jarvis\".",
-    "Conditions (optional): leave empty.",
-    "Actions › Add action › Notifications › send a notification to your phone, message \"Jarvis wake up\". " +
-        "The message must say \"Jarvis\" and \"wake up\"; that's what Jarvis looks for.",
-    "Save. Then lock the phone and say \"Hey Google, Jarvis wake up\".",
+    RoutineStep("Open the Google Home app and tap + › Automation."),
+    RoutineStep("Name: type \"$ROUTINE_PHRASE\" (only you see it).", ROUTINE_PHRASE),
+    RoutineStep("Starter › Hey Google › type the phrase \"$ROUTINE_PHRASE\".", ROUTINE_PHRASE),
+    RoutineStep(
+        "Actions › Notify › message \"$ROUTINE_PHRASE\". It must contain \"Jarvis\" and \"wake up\"; that's what Jarvis looks for.",
+        ROUTINE_PHRASE,
+    ),
+    RoutineStep("Save. Then lock the phone and say \"Hey Google, $ROUTINE_PHRASE\"."),
 )
 
 private val WAKE_OPTIONS = listOf(
@@ -137,6 +145,7 @@ fun ActiveScreen(vm: JarvisViewModel) {
     var interruptMode by remember { mutableStateOf(settings.interruptMode) }
     var restAtNight by remember { mutableStateOf(active.wakePauseAtNight) }
     var minBattery by remember { mutableStateOf(active.wakeMinBattery) }
+    var chimes by remember { mutableStateOf(active.chimes) }
 
     // Re-check after coming back from system settings.
     LifecycleResumeEffect(Unit) {
@@ -251,7 +260,12 @@ fun ActiveScreen(vm: JarvisViewModel) {
             }
             AnimatedVisibility(stepsOpen) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ROUTINE_STEPS.forEachIndexed { i, step -> Text("${i + 1}. $step", fontSize = 13.sp, color = Color.LightGray) }
+                    ROUTINE_STEPS.forEachIndexed { i, step ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("${i + 1}. ${step.text}", Modifier.weight(1f), fontSize = 13.sp, color = Color.LightGray)
+                            step.copy?.let { words -> TextButton(onClick = { copyText(context, words) }) { Text("Copy") } }
+                        }
+                    }
                 }
             }
 
@@ -288,9 +302,12 @@ fun ActiveScreen(vm: JarvisViewModel) {
                     ActiveModeService.refreshWake(context)
                 }
             }
-            if (listensForName && vm.wakeModelReady) {
-                OutlinedButton(onClick = { vm.screen = "voice" }) { Text("Jarvis's replies…") }
-            }
+            Setting(
+                "Wake and sleep sounds",
+                "A rising chime when Jarvis wakes, two beeps if it was already awake, a soft falling one when it stops listening",
+                chimes,
+            ) { chimes = it; active.chimes = it }
+            OutlinedButton(onClick = { vm.screen = "voice" }) { Text("Jarvis's replies…") }
         }
 
         // --- Speaking up on its own ---
@@ -425,5 +442,14 @@ private fun Choices(options: List<Triple<String, String, String>>, selected: Str
 private fun ChipRow(values: List<Int>, selected: Int, label: (Int) -> String, onSelect: (Int) -> Unit) {
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         values.forEach { v -> FilterChip(selected = selected == v, onClick = { onSelect(v) }, label = { Text(label(v)) }) }
+    }
+}
+
+/** Puts [text] on the clipboard (Android 13+ shows its own confirmation; older versions get a toast). */
+private fun copyText(context: Context, text: String) {
+    val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+    clipboard.setPrimaryClip(android.content.ClipData.newPlainText(text, text))
+    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) {
+        android.widget.Toast.makeText(context, "Copied \"$text\"", android.widget.Toast.LENGTH_SHORT).show()
     }
 }

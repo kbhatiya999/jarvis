@@ -38,6 +38,10 @@ class ActiveModeTest {
         assertTrue(active.wakePauseAtNight)
         assertEquals(20, active.wakeMinBattery)
         assertEquals(ActiveMode.DEFAULT_WAKE_LINES, active.wakeLines)
+        assertEquals(ActiveMode.DEFAULT_ALREADY_AWAKE_LINES, active.alreadyAwakeLines)
+        assertTrue(active.chimes)
+        // Waking and "already awake" must never sound the same.
+        assertTrue(active.wakeLines.none { it in active.alreadyAwakeLines })
         store.map.putAll(saved)
     }
 

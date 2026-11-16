@@ -144,7 +144,20 @@ class ActiveModeService : Service() {
 
     /** "Jarvis wake up": Jarvis answers at once (a clip, no network), then listens. Also on the lock screen. */
     private fun wakePhrase() {
-        if (session != null || VoiceChatService.running || inCall() || jarvis.apiKey.value == null) return
+        if (session != null) {
+            alreadyAwake()
+            return
+        }
+        val skip = when {
+            VoiceChatService.running -> "voice chat is open"
+            (if (wakeForced) phoneCall() else inCall()) -> "in a call"
+            jarvis.apiKey.value == null -> "no API key"
+            else -> null
+        }
+        if (skip != null) {
+            Log.i(TAG, "Wake skipped: $skip")
+            return
+        }
         startSession(
             "The user said \"Jarvis wake up\" (the phone may be locked or in another app); you have already " +
                 "answered them. Listen and help, briefly. They may ask you to send a message: send it right away " +
@@ -154,15 +167,81 @@ class ActiveModeService : Service() {
         )
         val t = token
         update("Listening")
-        clips.play(Clips.Slot.WAKE) { if (t === token) main.post(startListening) }
+        chime(Chime.Kind.WAKE) {
+            if (t === token) clips.play(Clips.Slot.WAKE) { if (t === token) main.post(startListening) }
+        }
     }
+
+    /**
+     * "Jarvis wake up" while it's already up: say so (two beeps, "Already awake, Sir"), so you're never left
+     * wondering which it was. Stops whatever it was saying and listens afresh.
+     */
+    private fun alreadyAwake() {
+        val s = session ?: return
+        Log.i(TAG, "Wake: already awake")
+        s.interrupt()
+        main.removeCallbacks(listenTimeout)
+        main.removeCallbacks(startListening)
+        // Mic off while it answers, so Gemini doesn't hear the clip and reply to it.
+        if (micOn) {
+            s.stopMic()
+            micOn = false
+        }
+        main.removeCallbacks(endSession)
+        main.postDelayed(endSession, MAX_SESSION_MS)
+        update("Listening")
+        val t = token
+        chime(Chime.Kind.ALREADY) {
+            if (t === token) clips.play(Clips.Slot.ALREADY_AWAKE) { if (t === token) main.post(startListening) }
+        }
+    }
+
+    /** Plays [kind] unless chimes are turned off; [done] runs either way. */
+    private fun chime(kind: Chime.Kind, done: () -> Unit = {}) {
+        if (jarvis.active.chimes) Chime.play(kind, done) else done()
+    }
+
+    /**
+     * A wake from a Google Home routine arrives while Google is still answering ("OK", a chime) and may still
+     * hold the audio. Wait until it's quiet (up to [ROUTINE_QUIET_MAX_MS]) so Jarvis's own reply is heard
+     * rather than lost under, or ducked by, Google's.
+     */
+    private fun wakeAfterGoogle() {
+        main.removeCallbacks(routineWait)
+        routineWaitStart = System.currentTimeMillis()
+        Log.i(TAG, "Routine wake: waiting for Google to finish")
+        main.post(routineWait)
+    }
+
+    private var routineWaitStart = 0L
+    private val routineWait: Runnable = object : Runnable {
+        override fun run() {
+            val waited = System.currentTimeMillis() - routineWaitStart
+            val audio = getSystemService(AudioManager::class.java)
+            // Music or a game playing on doesn't count; Google's voice, chimes and notifications do.
+            val talking = audio.activePlaybackConfigurations.any {
+                it.audioAttributes.usage !in setOf(AudioAttributes.USAGE_MEDIA, AudioAttributes.USAGE_GAME)
+            }
+            val busy = audio.mode != AudioManager.MODE_NORMAL || talking
+            if (busy && waited < ROUTINE_QUIET_MAX_MS) {
+                main.postDelayed(this, ROUTINE_POLL_MS)
+                return
+            }
+            Log.i(TAG, "Routine wake after ${waited} ms" + if (busy) " (still busy: mode ${audio.mode})" else "")
+            // You asked out loud: Google's voice session leaving a voice-chat mode set mustn't block it.
+            wakeForced = true
+            wakePhrase()
+            wakeForced = false
+        }
+    }
+    private var wakeForced = false
 
     /** "Jarvis power down": stop at once, even mid-sentence, acknowledge, and go back to waiting for the phrase. */
     private fun powerDown() {
         when {
             session != null -> {
                 session?.interrupt()
-                end()
+                end(sound = false)
             }
             VoiceChatService.running -> VoiceChatService.onStopRequested?.invoke()
             else -> return // nothing to stop
@@ -180,6 +259,12 @@ class ActiveModeService : Service() {
         main.post(startListening)
     }
 
+    /** A phone call ringing or in progress (not just an app holding a voice-chat audio mode). */
+    private fun phoneCall(): Boolean {
+        val mode = getSystemService(AudioManager::class.java).mode
+        return mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_RINGTONE
+    }
+
     private fun inCall(): Boolean {
         val mode = getSystemService(AudioManager::class.java).mode
         return mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION || mode == AudioManager.MODE_RINGTONE
@@ -194,7 +279,7 @@ class ActiveModeService : Service() {
             ACTION_TEST -> appOpened("Jarvis test", force = true)
             ACTION_TALK -> talk()
             ACTION_REFRESH -> refreshWake()
-            ACTION_WAKE -> wakePhrase()
+            ACTION_WAKE -> if (intent.getBooleanExtra(EXTRA_ROUTINE, false)) wakeAfterGoogle() else wakePhrase()
         }
         // Not sticky: a restart by the system would come from the background, where the mic is not allowed.
         return START_NOT_STICKY
@@ -203,11 +288,13 @@ class ActiveModeService : Service() {
     override fun onDestroy() {
         destroyed = true
         main.removeCallbacks(recheckWake)
+        main.removeCallbacks(routineWait)
         if (instance === this) try { unregisterReceiver(power) } catch (e: IllegalArgumentException) { }
         wake?.stop()
         wake = null
         clips.stop()
-        end()
+        Chime.stop()
+        end(sound = false)
         if (streaming) jarvis.relay.releaseStream()
         streaming = false
         if (instance === this) {
@@ -376,7 +463,9 @@ class ActiveModeService : Service() {
         main.postDelayed(listenTimeout, listenMs)
     }
 
-    private fun end() {
+    /** Ends the conversation; [sound] plays the falling "stopped listening" tone (not on power down / shutdown). */
+    private fun end(sound: Boolean = true) {
+        if (sound && session != null && !destroyed) chime(Chime.Kind.SLEEP)
         main.removeCallbacks(endSession)
         main.removeCallbacks(listenTimeout)
         main.removeCallbacks(startListening)
@@ -456,6 +545,9 @@ class ActiveModeService : Service() {
         private const val ACTION_TALK = "com.kbhatiya999.jarvis.TALK"
         private const val ACTION_REFRESH = "com.kbhatiya999.jarvis.REFRESH_WAKE"
         private const val ACTION_WAKE = "com.kbhatiya999.jarvis.WAKE"
+        private const val EXTRA_ROUTINE = "routine"
+        private const val ROUTINE_POLL_MS = 250L
+        private const val ROUTINE_QUIET_MAX_MS = 6_000L
         private const val END_FALLBACK_MS = 8_000L
         private const val WAKE_RECHECK_MS = 5 * 60_000L
 
@@ -489,8 +581,10 @@ class ActiveModeService : Service() {
         }
 
         /** Like saying "Jarvis wake up": an instant reply, then it listens (e.g. from a Google Home routine). */
-        fun wake(context: Context) {
-            context.startService(Intent(context, ActiveModeService::class.java).setAction(ACTION_WAKE))
+        fun wake(context: Context, fromRoutine: Boolean = false) {
+            context.startService(
+                Intent(context, ActiveModeService::class.java).setAction(ACTION_WAKE).putExtra(EXTRA_ROUTINE, fromRoutine)
+            )
         }
 
         /** The wake phrase setting changed (or its model arrived). */

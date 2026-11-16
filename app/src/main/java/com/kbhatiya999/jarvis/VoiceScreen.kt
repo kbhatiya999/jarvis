@@ -101,7 +101,7 @@ fun VoiceScreen(vm: JarvisViewModel) {
             val recordedCount = remember(version) { clips.lines(slot).count { clips.recorded(it) } }
 
             HorizontalDivider()
-            Text("When you say \"${slot.label}\"", fontWeight = FontWeight.Bold)
+            Text(slot.label, fontWeight = FontWeight.Bold)
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },

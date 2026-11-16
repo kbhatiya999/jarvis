@@ -27,8 +27,9 @@ import java.util.zip.ZipOutputStream
  */
 class Clips(context: Context) {
     enum class Slot(val folder: String, val label: String) {
-        WAKE("wake", "Jarvis wake up"),
-        POWER_DOWN("power_down", "Jarvis power down"),
+        WAKE("wake", "When you say \"Jarvis wake up\""),
+        ALREADY_AWAKE("already_awake", "When you say \"Jarvis wake up\" and it's already awake"),
+        POWER_DOWN("power_down", "When you say \"Jarvis power down\""),
     }
 
     private val app = context.applicationContext
@@ -41,11 +42,13 @@ class Clips(context: Context) {
 
     fun lines(slot: Slot): List<String> = when (slot) {
         Slot.WAKE -> jarvis.active.wakeLines
+        Slot.ALREADY_AWAKE -> jarvis.active.alreadyAwakeLines
         Slot.POWER_DOWN -> jarvis.active.powerDownLines
     }
 
     fun setLines(slot: Slot, lines: List<String>) = when (slot) {
         Slot.WAKE -> jarvis.active.wakeLines = lines
+        Slot.ALREADY_AWAKE -> jarvis.active.alreadyAwakeLines = lines
         Slot.POWER_DOWN -> jarvis.active.powerDownLines = lines
     }
 
@@ -273,6 +276,10 @@ class Clips(context: Context) {
         @Volatile private var instance: Clips? = null
         fun get(context: Context): Clips = instance ?: synchronized(this) { instance ?: Clips(context).also { instance = it } }
 
-        val DEFAULTS = mapOf(Slot.WAKE to ActiveMode.DEFAULT_WAKE_LINES, Slot.POWER_DOWN to ActiveMode.DEFAULT_POWER_LINES)
+        val DEFAULTS = mapOf(
+            Slot.WAKE to ActiveMode.DEFAULT_WAKE_LINES,
+            Slot.ALREADY_AWAKE to ActiveMode.DEFAULT_ALREADY_AWAKE_LINES,
+            Slot.POWER_DOWN to ActiveMode.DEFAULT_POWER_LINES,
+        )
     }
 }

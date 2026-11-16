@@ -82,6 +82,16 @@ class ActiveMode internal constructor(private val jarvis: Jarvis) {
         get() = lines(WAKE_LINES, DEFAULT_WAKE_LINES)
         set(v) = setLines(WAKE_LINES, v)
 
+    /** What Jarvis says on "Jarvis wake up" when it was already awake (so you can tell the two apart). */
+    var alreadyAwakeLines: List<String>
+        get() = lines(AWAKE_LINES, DEFAULT_ALREADY_AWAKE_LINES)
+        set(v) = setLines(AWAKE_LINES, v)
+
+    /** A rising chime when Jarvis wakes, two beeps when it already was, a falling one when it stops listening. */
+    var chimes: Boolean
+        get() = store.get(CHIMES) != "false"
+        set(v) = store.set(CHIMES, v.toString())
+
     /** What Jarvis says on "Jarvis power down". */
     var powerDownLines: List<String>
         get() = lines(POWER_LINES, DEFAULT_POWER_LINES)
@@ -130,7 +140,16 @@ class ActiveMode internal constructor(private val jarvis: Jarvis) {
         const val INTERRUPT_ANY = "any"
         const val INTERRUPT_NEVER = "never"
         private val INTERRUPT_MODES = setOf(INTERRUPT_NAME, INTERRUPT_ANY, INTERRUPT_NEVER)
-        val DEFAULT_WAKE_LINES = listOf("At your service, Sir.", "Yes, Sir?", "Listening.")
+        // Long and distinctive enough to catch, and clearly "I just woke up" (vs. the already-awake lines).
+        val DEFAULT_WAKE_LINES = listOf(
+            "Jarvis online. I'm listening, Sir.",
+            "Systems up, Sir. Go ahead.",
+            "Jarvis here and awake, Sir. What do you need?",
+        )
+        val DEFAULT_ALREADY_AWAKE_LINES = listOf(
+            "Already awake, Sir. Go ahead.",
+            "Still here, Sir. I'm listening.",
+        )
         val DEFAULT_POWER_LINES = listOf("Powering down, Sir.", "Standing by.", "As you wish.")
         const val DEFAULT_WAKE_MIN_BATTERY = 20
         const val WAKE_ALWAYS = "always"
@@ -144,6 +163,8 @@ class ActiveMode internal constructor(private val jarvis: Jarvis) {
         private const val WAKE = "wake_enabled"
         private const val WAKE_LINES = "wake_lines"
         private const val POWER_LINES = "power_down_lines"
+        private const val AWAKE_LINES = "already_awake_lines"
+        private const val CHIMES = "chimes"
         private const val LISTEN = "listen_seconds"
         private const val LOCKED = "speak_when_locked"
         private const val INTERRUPT = "interruptible"
