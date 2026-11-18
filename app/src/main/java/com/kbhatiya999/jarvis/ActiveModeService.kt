@@ -296,6 +296,10 @@ class ActiveModeService : Service() {
         val s = session ?: return
         if (jarvis.active.interruptMode != ActiveMode.INTERRUPT_NAME) return
         if (s.playbackRemainingMs() <= 0) return // not speaking: the mic already reaches Gemini
+        if (s.replyContainsName()) { // Jarvis's own voice saying "Jarvis" (echo), not the user
+            JarvisLog.i(TAG, "name heard while Jarvis is saying its own name: not an interruption")
+            return
+        }
         s.interrupt()
         main.removeCallbacks(startListening)
         main.post(startListening)

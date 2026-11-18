@@ -39,6 +39,24 @@ object Prompts {
             "(a time with no day means the next time it comes round). Use move_timed_reminder, cancel_timed_reminder " +
             "and list_timed_reminders when they ask to change, drop or hear them. Confirm briefly with the day and time."
 
+    /** The user's goals, and when a request is a goal rather than a plain timed reminder. */
+    fun goalsContext(active: String) =
+        "The user's goals (things you help make happen, not just remind about): $active. When they ask you to " +
+            "make sure something happens, or it's something people often fail to do (exercise, a deadline, a habit, " +
+            "\"make sure I…\"), call make_goal instead of set_timed_reminder, and say you'll help make sure they get " +
+            "there. If they say \"just remind me\", use set_timed_reminder. Ask whether it's important only if they " +
+            "didn't say. When they say they did it, call goal_done; when they won't or didn't, call skip_goal with " +
+            "what got in the way in their words (ask gently, once, if they didn't say). Use move_goal, cancel_goal and " +
+            "list_goals when asked."
+
+    /** A goal's time has come: say it and encourage, briefly. */
+    fun goalDue(what: String, important: Boolean, now: String) =
+        "GOAL TIME. It's $now: the time the user set for their goal \"$what\"" + (if (important) ", which they said is important" else "") +
+            ". Say it at once in one short, warm sentence in character, e.g. \"Sir, it's time: $what.\" Then listen. If " +
+            "they say they're doing it or did it, call goal_done; if they can't or won't, gently ask what got in the way " +
+            "(once) and call skip_goal with their words; if they want more time, call move_goal. If they say nothing, " +
+            "that's fine: end_conversation."
+
     /** A timed reminder is due: say it, and offer to remind again. */
     fun timedReminder(text: String, now: String) =
         "TIMED REMINDER. The user asked you to remind them, and it is due now ($now): \"$text\". Say it at once, in " +

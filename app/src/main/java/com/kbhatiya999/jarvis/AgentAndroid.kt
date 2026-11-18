@@ -54,6 +54,10 @@ object PhoneClock : AgentClock {
 
     override fun nowForPrompt(): String = long.format(Instant.ofEpochMilli(now()).atZone(zone)).lowercaseAmPm() + " (${zone.id})"
 
+    override fun hour(millis: Long) = Instant.ofEpochMilli(millis).atZone(zone).hour
+
+    override fun localDate(millis: Long): String = Instant.ofEpochMilli(millis).atZone(zone).toLocalDate().toString()
+
     private fun String.lowercaseAmPm() = replace("AM", "am").replace("PM", "pm")
 }
 

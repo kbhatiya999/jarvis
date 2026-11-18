@@ -23,11 +23,23 @@ class Agent internal constructor(private val platform: Platform) {
     var clock: AgentClock = UtcClock { platform.nowMillis() }
     var output: Output? = null
 
+    /** Active mode's quiet hours; the platform sets it (Jarvis: active mode's setting). */
+    var isQuietHour: (hour: Int) -> Boolean = { false }
+
+    /** What Jarvis may do on its own (budgets, quiet hours, spacing, plan size). */
+    val rules = Rules({ clock }, platform.store("agent_rules")) { isQuietHour(it) }
+
     private val store = platform.store("agent")
     private val features = mutableListOf<Feature>()
 
     /** First feature: "remind me at 6 to call Mom". */
     val timedReminders = TimedReminders(this, platform.store("agent_timed_reminders")).also { features += it }
+
+    /** Goals: "make sure I go to the gym at 6". Plans and checkpoints build on these in the next steps. */
+    val goals = Goals(this, platform.store("agent_goals")).also { features += it }
+
+    /** Short facts about the user shared by all goals (at most [Profile.MAX] lines), visible and editable. */
+    val profile = Profile(platform.store("agent_profile")) { clock.now() }
 
     internal val now: Long get() = clock.now()
 
@@ -212,6 +224,12 @@ interface AgentClock {
 
     /** For prompts: "Wednesday 18 November 2026, 3:05 pm (Asia/Kolkata)" */
     fun nowForPrompt(): String
+
+    /** Hour of day (0–23) in the user's time zone. */
+    fun hour(millis: Long): Int
+
+    /** The user's local date, "2026-11-18" (daily limits reset on it). */
+    fun localDate(millis: Long): String
 }
 
 /** A clock in UTC: tests and platforms that don't provide their own. */
@@ -235,6 +253,10 @@ class UtcClock(private val nowMillis: () -> Long) : AgentClock {
     }
 
     override fun nowForPrompt() = describe(now())
+
+    override fun hour(millis: Long) = (millis.mod(86_400_000L) / 3_600_000L).toInt()
+
+    override fun localDate(millis: Long) = describe(millis).substringBefore(' ')
 
     // Howard Hinnant's civil date algorithms (proleptic Gregorian).
     private fun daysFromCivil(y0: Int, m: Int, d: Int): Long {

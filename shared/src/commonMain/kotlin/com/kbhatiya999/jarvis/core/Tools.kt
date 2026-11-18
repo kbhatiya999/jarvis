@@ -1,5 +1,7 @@
 package com.kbhatiya999.jarvis.core
 
+import com.kbhatiya999.jarvis.core.agent.Goals
+import com.kbhatiya999.jarvis.core.agent.Importance
 import com.kbhatiya999.jarvis.core.agent.TimedReminders
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
@@ -27,6 +29,22 @@ class Tools internal constructor(private val jarvis: Jarvis) {
             fn("cancel_timed_reminder", "Cancel a timed reminder that hasn't come due yet.",
                 "reminder" to "The reminder, as the user calls it or as listed."),
             fn("list_timed_reminders", "The timed reminders still to come, with their times."),
+            fn("make_goal", "Help the user make something happen by a time (\"make sure I go to the gym at 6\"). " +
+                "Use for things people often fail to do; for a plain nudge use set_timed_reminder.",
+                "goal" to "The goal in the user's words, e.g. \"go to the gym\".",
+                "time" to "When, local time, as YYYY-MM-DDTHH:MM, worked out from the current local time.",
+                "importance" to "\"important\" or \"nice\" (nice to have); \"nice\" if they didn't say."),
+            fn("move_goal", "Change a goal's time.",
+                "goal" to "The goal, as the user calls it or as listed.",
+                "time" to "The new local time, as YYYY-MM-DDTHH:MM."),
+            fn("cancel_goal", "Drop a goal the user no longer wants.",
+                "goal" to "The goal, as the user calls it or as listed."),
+            fn("goal_done", "The user did the goal.",
+                "goal" to "The goal, as the user calls it or as listed."),
+            fn("skip_goal", "The user isn't doing or didn't do the goal this time.",
+                "goal" to "The goal, as the user calls it or as listed.",
+                "reason" to "What got in the way, in their words; empty if they didn't say."),
+            fn("list_goals", "The user's goals still going, with their times."),
             fn(STAY_SILENT, "Say nothing: call this instead of speaking when what you heard wasn't meant for you " +
                 "(the user talking to someone else, a TV, noise, a half-heard fragment). It makes no sound."),
             fn(END_CONVERSATION, "End this conversation: the user wants you to stop or is done (\"stop\", \"that's " +
@@ -54,6 +72,13 @@ class Tools internal constructor(private val jarvis: Jarvis) {
             "move_timed_reminder" -> reply(timed(jarvis.agent.timedReminders.move(args.str("reminder"), args.str("time")), "Moved"))
             "cancel_timed_reminder" -> reply(timed(jarvis.agent.timedReminders.cancel(args.str("reminder")), "Cancelled"))
             "list_timed_reminders" -> reply(ok("Timed reminders still to come: ${jarvis.agent.timedReminders.describePending()}"))
+            "make_goal" -> reply(goal(jarvis.agent.goals.add(args.str("goal"), args.str("time"),
+                if (args.str("importance").trim().lowercase().startsWith("imp")) Importance.IMPORTANT else Importance.NICE), "Goal set"))
+            "move_goal" -> reply(goal(jarvis.agent.goals.move(args.str("goal"), args.str("time")), "Moved"))
+            "cancel_goal" -> reply(goal(jarvis.agent.goals.cancel(args.str("goal")), "Cancelled"))
+            "goal_done" -> reply(goal(jarvis.agent.goals.done(args.str("goal")), "Marked done"))
+            "skip_goal" -> reply(goal(jarvis.agent.goals.skip(args.str("goal"), args.str("reason")), "Skipped this time"))
+            "list_goals" -> reply(ok("Goals: ${jarvis.agent.goals.describeActive()}"))
             else -> reply(error("Unknown function $name"))
         }
     }
@@ -93,6 +118,11 @@ class Tools internal constructor(private val jarvis: Jarvis) {
     private fun timed(r: TimedReminders.Result, verb: String) = when (r) {
         is TimedReminders.Result.Ok -> ok("$verb: \"${r.reminder.text}\" at ${jarvis.agent.clock.describe(r.reminder.at)}.")
         is TimedReminders.Result.Error -> error(r.message)
+    }
+
+    private fun goal(r: Goals.Result, verb: String) = when (r) {
+        is Goals.Result.Ok -> ok("$verb: \"${r.goal.what}\" by ${jarvis.agent.clock.describe(r.goal.deadline)}.")
+        is Goals.Result.Error -> error(r.message)
     }
 
     private fun ok(result: String) = JsonObject(mapOf("result" to JsonPrimitive(result)))

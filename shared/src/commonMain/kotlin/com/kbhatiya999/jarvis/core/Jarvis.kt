@@ -24,6 +24,10 @@ class Jarvis private constructor(val platform: Platform) {
     val bridge = GeminiBridge(this)
     val tools = Tools(this)
     val active = ActiveMode(this)
+
+    init {
+        agent.isQuietHour = { active.isQuietHour(it) }
+    }
     val voiceLines = VoiceLines(this)
 
     /** The Gemini API key, kept by the platform as a secret. */
@@ -49,6 +53,7 @@ class Jarvis private constructor(val platform: Platform) {
         append(Prompts.PERSONA)
         append("\n\n").append(Prompts.context(reminders.items.value, contacts.contacts.value, contacts.myName.value, languages.codes.value))
         append("\n").append(Prompts.timedContext(agent.clock.nowForPrompt(), agent.timedReminders.describePending()))
+        append("\n").append(Prompts.goalsContext(agent.goals.describeActive()))
         if (extra != null) append("\n\n").append(extra)
         val memory = conversation.memoryText()
         if (memory.isNotEmpty()) append("\n\n").append(Prompts.MEMORY_INTRO).append('\n').append(memory)

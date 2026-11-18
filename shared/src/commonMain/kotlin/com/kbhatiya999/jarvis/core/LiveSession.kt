@@ -170,6 +170,14 @@ class LiveSession internal constructor(
         if (ready) queue.trySend("""{"realtimeInput":{"audioStreamEnd":true}}""")
     }
 
+    /**
+     * True when what Jarvis is saying this turn contains its own name ("a message from Shweta's Jarvis"). Its voice
+     * leaking back into the mic then sounds like the user saying "Jarvis", so the name must not interrupt it.
+     */
+    fun replyContainsName(): Boolean = try {
+        jarvisTurn.contains("jarvis", ignoreCase = true)
+    } catch (e: Exception) { false }
+
     /** How much of Jarvis's reply is still to be heard, in milliseconds. */
     fun playbackRemainingMs(): Long = audio.remainingMs()
 
