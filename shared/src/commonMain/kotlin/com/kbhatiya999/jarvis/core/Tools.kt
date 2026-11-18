@@ -1,5 +1,6 @@
 package com.kbhatiya999.jarvis.core
 
+import com.kbhatiya999.jarvis.core.agent.TimedReminders
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -12,10 +13,22 @@ class Tools internal constructor(private val jarvis: Jarvis) {
             fn("send_message", "Send a message to another person's Jarvis, which will pass it on to them.",
                 "contact" to "Name of the contact, as listed in your contacts.",
                 "message" to "The message to deliver, written for the other person."),
-            fn("add_reminder", "Add a standing reminder you will look after for the user.",
+            fn("add_reminder", "Add a standing reminder: something you look after in general, with no set time " +
+                "(e.g. \"drink water\", \"stretching every hour\"). For a specific time, use set_timed_reminder.",
                 "reminder" to "What to remind them about, e.g. \"stretching every hour\"."),
-            fn("remove_reminder", "Stop reminding the user about something.",
+            fn("remove_reminder", "Stop a standing reminder.",
                 "reminder" to "The reminder to remove, as listed."),
+            fn("set_timed_reminder", "Remind the user of something at a set time: Jarvis says it when it's due.",
+                "reminder" to "What to remind them, in their words, e.g. \"call Mom\".",
+                "time" to "When it's due, local time, as YYYY-MM-DDTHH:MM, worked out from the current local time."),
+            fn("move_timed_reminder", "Change when a timed reminder is due.",
+                "reminder" to "The reminder, as the user calls it or as listed.",
+                "time" to "The new local time, as YYYY-MM-DDTHH:MM."),
+            fn("cancel_timed_reminder", "Cancel a timed reminder that hasn't come due yet.",
+                "reminder" to "The reminder, as the user calls it or as listed."),
+            fn("list_timed_reminders", "The timed reminders still to come, with their times."),
+            fn(STAY_SILENT, "Say nothing: call this instead of speaking when what you heard wasn't meant for you " +
+                "(the user talking to someone else, a TV, noise, a half-heard fragment). It makes no sound."),
             fn(END_CONVERSATION, "End this conversation: the user wants you to stop or is done (\"stop\", \"that's " +
                 "enough\", \"never mind\", \"goodbye\", \"power down\"). Say a very short acknowledgement first."),
         ))
@@ -37,6 +50,10 @@ class Tools internal constructor(private val jarvis: Jarvis) {
                     else error("No such reminder. Current reminders: ${reminders.items.value.joinToString("; ").ifEmpty { "none" }}")
                 )
             }
+            "set_timed_reminder" -> reply(timed(jarvis.agent.timedReminders.add(args.str("reminder"), args.str("time")), "Set"))
+            "move_timed_reminder" -> reply(timed(jarvis.agent.timedReminders.move(args.str("reminder"), args.str("time")), "Moved"))
+            "cancel_timed_reminder" -> reply(timed(jarvis.agent.timedReminders.cancel(args.str("reminder")), "Cancelled"))
+            "list_timed_reminders" -> reply(ok("Timed reminders still to come: ${jarvis.agent.timedReminders.describePending()}"))
             else -> reply(error("Unknown function $name"))
         }
     }
@@ -68,6 +85,14 @@ class Tools internal constructor(private val jarvis: Jarvis) {
     companion object {
         /** Handled by the session itself (it ends the session), not by [call]. */
         const val END_CONVERSATION = "end_conversation"
+
+        /** Handled by the session itself (it mutes Jarvis until the user speaks again), not by [call]. */
+        const val STAY_SILENT = "stay_silent"
+    }
+
+    private fun timed(r: TimedReminders.Result, verb: String) = when (r) {
+        is TimedReminders.Result.Ok -> ok("$verb: \"${r.reminder.text}\" at ${jarvis.agent.clock.describe(r.reminder.at)}.")
+        is TimedReminders.Result.Error -> error(r.message)
     }
 
     private fun ok(result: String) = JsonObject(mapOf("result" to JsonPrimitive(result)))

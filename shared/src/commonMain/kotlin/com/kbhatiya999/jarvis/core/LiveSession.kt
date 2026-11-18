@@ -64,6 +64,9 @@ class LiveSession internal constructor(
     private val userTurn = StringBuilder()
     private val jarvisTurn = StringBuilder()
     private var replied = false
+    // Jarvis decided what it heard wasn't for it (stay_silent, or it began to voice a placeholder like
+    // "<no speech>"): drop everything it says until the user speaks again.
+    private var silent = false
 
     fun connect() {
         JarvisLog.i(TAG, "session connecting (interruptible=$interruptible, speakOnly=$speakOnly, languages=${jarvis.languages.codes.value.joinToString(",")})")
@@ -240,6 +243,12 @@ class LiveSession internal constructor(
                 val call = c as? JsonObject ?: return@forEach
                 val id = call.str("id")
                 val name = call.str("name")
+                if (name == Tools.STAY_SILENT) {
+                    // A voice model can't "say nothing": a tool call is how it stays quiet.
+                    goSilent("stay_silent")
+                    sendToolResponse(id, name, JsonObject(mapOf("result" to JsonPrimitive("Silent. Say nothing; keep waiting."))))
+                    return@forEach
+                }
                 if (name == Tools.END_CONVERSATION) {
                     sendToolResponse(id, name, JsonObject(mapOf("result" to JsonPrimitive("Ending after your goodbye."))))
                     listener.onEndRequested()
@@ -251,13 +260,22 @@ class LiveSession internal constructor(
         }
 
         val content = msg.obj("serverContent") ?: return
-        content.obj("modelTurn")?.let { replying = true; replied = true }
+        content.obj("modelTurn")?.let { replying = true; if (!silent) replied = true }
         content.obj("modelTurn")?.arr("parts")?.forEach { p ->
-            if (dropReply) return@forEach
+            if (dropReply || silent) return@forEach
             (p as? JsonObject)?.obj("inlineData")?.str("data")?.takeIf { it.isNotEmpty() }?.let { audio.play(B64.unstd(it)) }
         }
-        content.obj("inputTranscription")?.str("text")?.takeIf { it.isNotEmpty() }?.let { userTurn.append(it); listener.onUserText(it) }
-        content.obj("outputTranscription")?.str("text")?.takeIf { it.isNotEmpty() }?.let { jarvisTurn.append(it); listener.onJarvisText(it) }
+        content.obj("inputTranscription")?.str("text")?.takeIf { it.isNotEmpty() }?.let {
+            silent = false // the user is speaking: Jarvis may answer this
+            userTurn.append(it)
+            listener.onUserText(it)
+        }
+        content.obj("outputTranscription")?.str("text")?.takeIf { it.isNotEmpty() }?.let {
+            jarvisTurn.append(it)
+            // Safety net: the model sometimes voices a stage direction instead of staying quiet.
+            if (!silent && isPlaceholder(jarvisTurn.toString())) goSilent("placeholder \"${JarvisLog.snippet(jarvisTurn.toString(), 30)}\"")
+            if (!silent) listener.onJarvisText(it)
+        }
         if (content.bool("interrupted")) {
             JarvisLog.i(TAG, "turn interrupted")
             // The user spoke over Jarvis: drop audio that is queued but not yet played.
@@ -272,6 +290,14 @@ class LiveSession internal constructor(
             replying = false
             listener.onTurnComplete()
         }
+    }
+
+    /** Stop Jarvis's voice now and until the user speaks again. */
+    private fun goSilent(why: String) {
+        if (!silent) JarvisLog.i(TAG, "staying silent: $why")
+        silent = true
+        replied = false
+        audio.flush()
     }
 
     /** One line per turn: the language Gemini heard and whether Jarvis treated it as meant for it (it replied). */
@@ -316,6 +342,12 @@ class LiveSession internal constructor(
     }
 
     companion object {
+        /** "<no speech>", "{pause}", "[silence]", "(no response)"...: a stage direction, not something to say. */
+        private val PLACEHOLDER = Regex("""^\s*([<{\[][^>}\]]*[>}\]]|\((silence|pause|no speech|no response|nothing)[^)]*\))""", RegexOption.IGNORE_CASE)
+
+        internal fun isPlaceholder(text: String) =
+            PLACEHOLDER.containsMatchIn(text) || text.trim().lowercase().let { it.startsWith("no speech") || it == "silence" }
+
         const val MODEL = "models/gemini-3.8-live"
         const val VOICE = "Charon"
         private const val TAG = "Live"

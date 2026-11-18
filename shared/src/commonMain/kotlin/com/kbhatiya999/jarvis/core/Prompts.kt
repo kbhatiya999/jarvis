@@ -16,8 +16,8 @@ object Prompts {
         if (myName.isNotBlank()) append("The user's name is ${myName}. ")
         append("The user's standing reminders, which you look after: ")
         append(if (reminders.isEmpty()) "none yet" else reminders.joinToString("; "))
-        append(". When the user asks you to remind them of something regularly, or to stop reminding them, ")
-        append("use add_reminder or remove_reminder.\n")
+        append(". Standing reminders have no set time: when the user asks you to look after something in general ")
+        append("(\"remind me to drink water\"), or to stop, use add_reminder or remove_reminder.\n")
         append("Other people's Jarvises you can message: ")
         append(if (contacts.isEmpty()) "none yet (they can be added under Contacts in the app)" else contacts.joinToString(", ") { it.name })
         append(". When the user asks you to tell someone, or someone's Jarvis, something, call send_message with the ")
@@ -30,6 +30,21 @@ object Prompts {
         append(languageRules(languages)).append('\n')
         append(addressedRules)
     }
+
+    /** The clock and the timed reminders, so "at 6" and "in 10 minutes" resolve to a real time. */
+    fun timedContext(now: String, pending: String) =
+        "The current local time is $now. The user's timed reminders still to come: $pending. When the user asks to " +
+            "be reminded at a time or after a while (\"remind me at 6 to call Mom\", \"in 10 minutes\"), call " +
+            "set_timed_reminder with the reminder in their words and the local time it's due as YYYY-MM-DDTHH:MM " +
+            "(a time with no day means the next time it comes round). Use move_timed_reminder, cancel_timed_reminder " +
+            "and list_timed_reminders when they ask to change, drop or hear them. Confirm briefly with the day and time."
+
+    /** A timed reminder is due: say it, and offer to remind again. */
+    fun timedReminder(text: String, now: String) =
+        "TIMED REMINDER. The user asked you to remind them, and it is due now ($now): \"$text\". Say it at once, in " +
+            "one short sentence in character, e.g. \"Sir, it's time to $text.\" Then stop and listen. If they ask to " +
+            "be reminded again (\"in 10 minutes\", \"snooze\"), call set_timed_reminder and confirm in a few words. " +
+            "If they say nothing or thank you, that's fine: end_conversation."
 
     /** Keeps what the user says, and what Jarvis saves for them, in the language they speak. */
     fun languageRules(languages: List<String>): String {
@@ -48,7 +63,8 @@ object Prompts {
     const val addressedRules = "Your microphone is open in everyday places, so you will often hear things that are not " +
         "for you: the user talking to other people or to themselves, voices on a TV, background noise, half-heard " +
         "fragments. Answer only speech that is clearly addressed to you. If it sounds like a conversation with " +
-        "someone else, or you are not sure it is meant for you, say nothing at all and keep waiting."
+        "someone else, or you are not sure it is meant for you, call stay_silent and say nothing. Never say a " +
+        "placeholder or stage direction such as <no speech>, {pause} or (silence) out loud."
 
     fun proactive(appName: String, time: String, pending: List<String>, canListen: Boolean = true) = buildString {
         append("ACTIVE MODE. You speak up on your own; the user did not ask. They just opened the app \"$appName\" ")

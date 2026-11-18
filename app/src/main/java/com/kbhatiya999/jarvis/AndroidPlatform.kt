@@ -153,6 +153,7 @@ class AndroidPlatform private constructor(private val context: Context) : Platfo
             return Jarvis.setUp(AndroidPlatform(context.applicationContext)).also {
                 it.languageCode = AppLog.languageCode()
                 it.bridge.defaultUrl = BuildConfig.BRIDGE_URL
+                AgentAndroid.attach(context, it.agent)
             }
         }
     }

@@ -8,6 +8,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Timed reminders fire on time: granted on install to reminder apps (Android 13+); Android 12 uses the other. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- To show the name of the app you opened (sideloaded app, not on Play). -->
     <uses-permission
         android:name="android.permission.QUERY_ALL_PACKAGES"
@@ -19,6 +23,16 @@
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
         android:theme="@android:style/Theme.Material.NoActionBar">
+        <!-- The agent (timed reminders): its alarms, and setting them again after a reboot, update or clock change. -->
+        <receiver android:name=".AgentAlarmReceiver" android:exported="false" />
+        <receiver android:name=".AgentRearmReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
         <!-- Hands the shared copy of the log to the share sheet (Settings > Logs > Share). -->
         <provider
             android:name="androidx.core.content.FileProvider"

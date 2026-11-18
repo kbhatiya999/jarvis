@@ -372,6 +372,24 @@ class ActiveModeService : Service() {
         startSession(Prompts.relay(pending, now()), "(Messages just arrived. Relay them now.)", source = "incoming message")
     }
 
+    /**
+     * The agent (core/agent) wants Jarvis to say something now, e.g. a timed reminder the user set. Also on the lock
+     * screen (they asked for it), but not in a call or with Do Not Disturb on: then false, and the agent notifies.
+     */
+    private fun speakForAgent(o: com.kbhatiya999.jarvis.core.agent.Outcome.Speak): Boolean {
+        if (jarvis.apiKey.value == null) return false
+        val audio = getSystemService(AudioManager::class.java)
+        if (audio.mode == AudioManager.MODE_IN_CALL || audio.mode == AudioManager.MODE_IN_COMMUNICATION || audio.mode == AudioManager.MODE_RINGTONE) return false
+        if (getSystemService(NotificationManager::class.java).currentInterruptionFilter > NotificationManager.INTERRUPTION_FILTER_ALL) return false
+        val s = session
+        if (s != null) {
+            s.sendText("(Due now, from the user's ${o.source}: \"${o.fallbackText}\". Tell the user right away, briefly.)")
+            return true
+        }
+        startSession(o.prompt, o.cue, countsForCooldown = false, source = o.source)
+        return true
+    }
+
     /** Talk from the notification or Quick Settings tile, also on the lock screen: Jarvis answers, then listens. */
     private fun talk() {
         if (session != null || jarvis.apiKey.value == null) return
@@ -636,6 +654,9 @@ class ActiveModeService : Service() {
         private var instance: ActiveModeService? = null
 
         val running get() = instance != null
+
+        /** For the agent: say [o] now if active mode is on and it's a good moment; false → the agent notifies. Main thread. */
+        fun speak(o: com.kbhatiya999.jarvis.core.agent.Outcome.Speak): Boolean = instance?.speakForAgent(o) ?: false
 
         /** Called by AppWatcher on the main thread. */
         fun onAppOpened(pkg: String) {
