@@ -5,7 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
-import android.util.Log
+import com.kbhatiya999.jarvis.core.JarvisLog
 import androidx.core.app.NotificationManagerCompat
 
 /**
@@ -15,29 +15,58 @@ import androidx.core.app.NotificationManagerCompat
  * Google apps, and only acts on that one; nothing is stored or sent anywhere.
  */
 class RoutineListener : NotificationListenerService() {
+    override fun onListenerConnected() {
+        connected = true
+        JarvisLog.i(TAG, "notification listener connected")
+    }
+
+    override fun onListenerDisconnected() {
+        connected = false
+        JarvisLog.w(TAG, "notification listener disconnected by the system: asking to reconnect")
+        try { requestRebind(component(this)) } catch (e: Exception) { JarvisLog.w(TAG, "rebind failed", e) }
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification) {
+        if (sbn.packageName == packageName) {
+            // Jarvis's own notifications never wake it (its status line says "Say "Jarvis wake up""). Only the
+            // self-check's test, known by its id, counts: it proves we can see notifications, and wakes nothing.
+            if (sbn.id == SelfCheck.TEST_ID) {
+                try { cancelNotification(sbn.key) } catch (e: Exception) { }
+                testSeenAt = System.currentTimeMillis()
+                JarvisLog.i(TAG, "self-check test notification seen")
+            }
+            return
+        }
         val text = allText(sbn.notification ?: return)
         val google = sbn.packageName in GOOGLE_APPS || sbn.packageName.startsWith("com.google.")
         // What arrived from Google (the app and whether it matched; never the text): shows where a routine posts.
-        if (google) Log.i(TAG, "Notification from ${sbn.packageName}: ${if (isTrigger(text)) "matches" else "no match"}")
+        if (google) JarvisLog.i(TAG, "Notification from ${sbn.packageName}: ${if (isTrigger(text)) "matches" else "no match"}")
         if (!isTrigger(text)) return
         if (!google) {
-            Log.i(TAG, "Ignoring a \"Jarvis wake up\" notification from ${sbn.packageName}")
+            JarvisLog.i(TAG, "Ignoring a \"Jarvis wake up\" notification from ${sbn.packageName}")
             return
         }
-        Log.i(TAG, "Routine trigger from ${sbn.packageName}")
+        JarvisLog.i(TAG, "Routine trigger from ${sbn.packageName}")
         try { cancelNotification(sbn.key) } catch (e: Exception) { }
         val now = System.currentTimeMillis()
         if (now - lastWake < DEDUPE_MS) return // the same routine can post twice (phone + watch, updates)
         lastWake = now
         if (ActiveModeService.running) ActiveModeService.wake(this, fromRoutine = true)
-        else Log.i(TAG, "Active mode is off: nothing to wake")
+        else JarvisLog.i(TAG, "Active mode is off: nothing to wake")
     }
 
     companion object {
-        private const val TAG = "JarvisRoutine"
+        private const val TAG = "Routine"
         private const val DEDUPE_MS = 5_000L
         private var lastWake = 0L
+
+        /** True while the system keeps this listener connected (some phones drop it in the background). */
+        @Volatile var connected = false
+            private set
+
+        /** When the self-check's own test notification was last seen by the listener (0 = never). */
+        @Volatile var testSeenAt = 0L
+            private set
 
         /** Google Home, the Google app (Assistant) and Gemini: where routine notifications come from. */
         private val GOOGLE_APPS = setOf(

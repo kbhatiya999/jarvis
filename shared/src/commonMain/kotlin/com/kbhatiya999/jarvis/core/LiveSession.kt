@@ -60,8 +60,13 @@ class LiveSession internal constructor(
     private var dropReply = false
     // Gemini is in the middle of sending a reply (audio still arriving).
     private var replying = false
+    // This turn so far, for the log: what the user said (transcript), what Jarvis said, whether it replied at all.
+    private val userTurn = StringBuilder()
+    private val jarvisTurn = StringBuilder()
+    private var replied = false
 
     fun connect() {
+        JarvisLog.i(TAG, "session connecting (interruptible=$interruptible, speakOnly=$speakOnly, languages=${jarvis.languages.codes.value.joinToString(",")})")
         job = jarvis.scope.launch {
             val client = HttpClient { install(WebSockets) { pingIntervalMillis = 20_000 } }
             var reason: String? = null
@@ -190,13 +195,23 @@ class LiveSession internal constructor(
             "model" to JsonPrimitive(MODEL),
             "generationConfig" to JsonObject(mapOf(
                 "responseModalities" to JsonArray(listOf(JsonPrimitive("AUDIO"))),
-                "speechConfig" to JsonObject(mapOf("voiceConfig" to JsonObject(mapOf(
-                    "prebuiltVoiceConfig" to JsonObject(mapOf("voiceName" to JsonPrimitive(VOICE))),
-                )))),
+                "speechConfig" to JsonObject(mapOf(
+                    "voiceConfig" to JsonObject(mapOf(
+                        "prebuiltVoiceConfig" to JsonObject(mapOf("voiceName" to JsonPrimitive(VOICE))),
+                    )),
+                    // The voice speaks the first language; the prompt has it reply in whichever one the user spoke.
+                    "languageCode" to JsonPrimitive(jarvis.languages.primary),
+                )),
             )),
             "systemInstruction" to JsonObject(mapOf("parts" to JsonArray(listOf(JsonObject(mapOf("text" to JsonPrimitive(systemPrompt))))))),
             "tools" to jarvis.tools.declarations,
-            "inputAudioTranscription" to JsonObject(emptyMap()),
+            // Listen for exactly the user's languages, so Hinglish works and English isn't written down as Chinese or Spanish.
+            "inputAudioTranscription" to JsonObject(mapOf("languageCodes" to JsonArray(jarvis.languages.codes.value.map { JsonPrimitive(it) }))),
+            // Less eager speech detection: noise and nearby talk are less likely to count as a turn.
+            "realtimeInputConfig" to JsonObject(mapOf("automaticActivityDetection" to JsonObject(mapOf(
+                "startOfSpeechSensitivity" to JsonPrimitive("START_SENSITIVITY_LOW"),
+                "silenceDurationMs" to JsonPrimitive(SILENCE_MS),
+            )))),
             "outputAudioTranscription" to JsonObject(emptyMap()),
             "contextWindowCompression" to JsonObject(mapOf(
                 "triggerTokens" to JsonPrimitive(104857),
@@ -211,6 +226,7 @@ class LiveSession internal constructor(
         val msg = parseJson(raw) as? JsonObject ?: return
 
         if (msg.containsKey("setupComplete")) {
+            JarvisLog.i(TAG, "session ready")
             ready = true
             drainEarly()
             pending.forEach { queue.trySend(it) }
@@ -235,14 +251,15 @@ class LiveSession internal constructor(
         }
 
         val content = msg.obj("serverContent") ?: return
-        content.obj("modelTurn")?.let { replying = true }
+        content.obj("modelTurn")?.let { replying = true; replied = true }
         content.obj("modelTurn")?.arr("parts")?.forEach { p ->
             if (dropReply) return@forEach
             (p as? JsonObject)?.obj("inlineData")?.str("data")?.takeIf { it.isNotEmpty() }?.let { audio.play(B64.unstd(it)) }
         }
-        content.obj("inputTranscription")?.str("text")?.takeIf { it.isNotEmpty() }?.let { listener.onUserText(it) }
-        content.obj("outputTranscription")?.str("text")?.takeIf { it.isNotEmpty() }?.let { listener.onJarvisText(it) }
+        content.obj("inputTranscription")?.str("text")?.takeIf { it.isNotEmpty() }?.let { userTurn.append(it); listener.onUserText(it) }
+        content.obj("outputTranscription")?.str("text")?.takeIf { it.isNotEmpty() }?.let { jarvisTurn.append(it); listener.onJarvisText(it) }
         if (content.bool("interrupted")) {
+            JarvisLog.i(TAG, "turn interrupted")
             // The user spoke over Jarvis: drop audio that is queued but not yet played.
             audio.flush()
             dropReply = false
@@ -250,10 +267,28 @@ class LiveSession internal constructor(
             listener.onInterrupted()
         }
         if (content.bool("turnComplete")) {
+            logTurn()
             dropReply = false
             replying = false
             listener.onTurnComplete()
         }
+    }
+
+    /** One line per turn: the language Gemini heard and whether Jarvis treated it as meant for it (it replied). */
+    private fun logTurn() {
+        val said = userTurn.toString()
+        if (said.isBlank()) {
+            JarvisLog.i(TAG, "turn: Jarvis spoke first")
+        } else {
+            val lang = Language.guess(said)
+            val outside = if (jarvis.languages.includesGuess(lang)) "" else " (NOT one of the user's languages)"
+            JarvisLog.i(TAG, "turn: user lang=$lang$outside addressed=$replied")
+            JarvisLog.said(TAG, "user", said)
+        }
+        if (jarvisTurn.isNotEmpty()) JarvisLog.said(TAG, "jarvis", jarvisTurn.toString())
+        userTurn.clear()
+        jarvisTurn.clear()
+        replied = false
     }
 
     private fun sendToolResponse(id: String, name: String, response: JsonObject) {
@@ -270,6 +305,7 @@ class LiveSession internal constructor(
 
     private fun finish(reason: String?) {
         if (closed) return
+        JarvisLog.i(TAG, "session closed" + if (reason != null) ": $reason" else "")
         closed = true
         ready = false
         recording = false
@@ -282,6 +318,8 @@ class LiveSession internal constructor(
     companion object {
         const val MODEL = "models/gemini-3.8-live"
         const val VOICE = "Charon"
+        private const val TAG = "Live"
+        private const val SILENCE_MS = 900 // a little longer than the default before a turn counts as over
         private const val EARLY_CHUNKS = 160 // about 10 s of 64 ms chunks
         private const val URL =
             "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"

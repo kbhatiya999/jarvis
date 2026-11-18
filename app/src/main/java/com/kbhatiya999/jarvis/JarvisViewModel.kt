@@ -15,7 +15,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     val settings = Settings(app)
 
     var editingKey by mutableStateOf(false)
-    /** Which screen is showing over the chat: null, "active", "reminders" or "contacts". */
+    /** Which screen is showing over the chat: null, "active", "reminders", "contacts", "logs" or "check". */
     var screen by mutableStateOf<String?>(null)
     var status by mutableStateOf("Standing by")
         private set

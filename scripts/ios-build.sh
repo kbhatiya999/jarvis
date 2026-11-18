@@ -15,10 +15,19 @@ fi
 APP_VERSION="$(scripts/version.sh)"
 short="$(sed -E 's/^v([0-9]+\.[0-9]+\.[0-9]+).*/\1/' <<<"$APP_VERSION")"   # CFBundleShortVersionString: x.y.z only
 code=$(( $(date +%s) / 60 - 26297280 ))                                       # minutes since 2020, as on Android
-echo "Building Jarvis for iOS $APP_VERSION ($mode)"
+# How much the app logs by default, as on Android (scripts/build.sh): LOG_LEVEL, else tilt:release --log-level,
+# else info for a release and debug for anything else.
+if [ -z "${LOG_LEVEL:-}" ]; then
+  if [ -s .tilt-inputs/log-level ]; then LOG_LEVEL="$(cat .tilt-inputs/log-level)"
+  elif [ -s .tilt-inputs/version ]; then LOG_LEVEL=info
+  else LOG_LEVEL=debug; fi
+fi
+case "$LOG_LEVEL" in error|warn|info|debug) ;; *) echo "Bad log level '$LOG_LEVEL' (error, warn, info or debug)" >&2; exit 1 ;; esac
+BRIDGE_URL="${BRIDGE_URL:-$(fnox get BRIDGE_URL 2>/dev/null || true)}"   # Connect Gemini; empty = users enter their own
+echo "Building Jarvis for iOS $APP_VERSION ($mode), log level $LOG_LEVEL, bridge ${BRIDGE_URL:-none}"
 xcodegen generate --spec ios/project.yml --quiet
 common=(-project ios/Jarvis.xcodeproj -scheme Jarvis -derivedDataPath ios/build/derived
-        MARKETING_VERSION="$short" CURRENT_PROJECT_VERSION="$code")
+        MARKETING_VERSION="$short" CURRENT_PROJECT_VERSION="$code" JARVIS_LOG_LEVEL="$LOG_LEVEL" JARVIS_BRIDGE_URL="$BRIDGE_URL")
 if [ "$mode" = sim ]; then
   # Simulator builds are always signed: unsigned ones get a fresh Keychain on every install (API key and
   # Jarvis address lost). With your free Apple ID team (IOS_TEAM_ID) iOS also runs the Jarvis check-in

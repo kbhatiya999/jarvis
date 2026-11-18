@@ -54,7 +54,7 @@ class Relay internal constructor(private val jarvis: Jarvis) {
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        jarvis.platform.log("relay send failed: $e")
+        JarvisLog.w("Relay", "send failed", e)
         e.message ?: e.toString()
     }
 
@@ -71,7 +71,7 @@ class Relay internal constructor(private val jarvis: Jarvis) {
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        jarvis.platform.log("relay poll failed: $e")
+        JarvisLog.w("Relay", "poll failed", e)
         false
     }
 
@@ -119,7 +119,7 @@ class Relay internal constructor(private val jarvis: Jarvis) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                jarvis.platform.log("relay stream dropped: ${e.message}")
+                JarvisLog.w("Relay", "stream dropped", e)
             }
             delay(backoff)
             backoff = minOf(backoff * 2, 60_000L)
@@ -162,14 +162,22 @@ class Inbox internal constructor(private val jarvis: Jarvis) {
             jarvis.platform.notify("$claimedName's Jarvis wants to connect", "Open Jarvis › Contacts to accept or ignore.")
             return
         }
-        receive(contact.name, text)
+        if (jarvis.bridge.isBridge(contact.address)) {
+            JarvisLog.i("Bridge", "message from Gemini (${text.length} characters)")
+            JarvisLog.said("Bridge", "gemini", text)
+            receive(contact.name, text, fromBridge = true)
+        } else {
+            receive(contact.name, text)
+        }
     }
 
     /** A message from a known contact (or a request you just accepted). */
-    fun receive(name: String, text: String) {
-        jarvis.conversation.addReceived(name, text)
-        store.set("pending", stringListJson((stringList(store.get("pending")) + "$name's Jarvis: $text").takeLast(10)))
-        jarvis.platform.notify("Message from $name's Jarvis", text)
+    fun receive(name: String, text: String, fromBridge: Boolean = false) {
+        jarvis.conversation.addReceived(name, text, if (fromBridge) "the Gemini app" else "$name's Jarvis")
+        // Gemini (through the bridge) isn't someone's Jarvis and can't receive a reply.
+        val line = if (fromBridge) "$name, the Gemini app (reports back, can't be replied to): $text" else "$name's Jarvis: $text"
+        store.set("pending", stringListJson((stringList(store.get("pending")) + line).takeLast(10)))
+        jarvis.platform.notify(if (fromBridge) "From Gemini" else "Message from $name's Jarvis", text)
         jarvis.onMessageArrived?.invoke()
     }
 

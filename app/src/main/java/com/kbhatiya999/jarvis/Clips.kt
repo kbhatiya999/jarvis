@@ -8,7 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
 import android.speech.tts.TextToSpeech
-import android.util.Log
+import com.kbhatiya999.jarvis.core.JarvisLog
 import com.kbhatiya999.jarvis.core.ActiveMode
 import com.kbhatiya999.jarvis.core.Jarvis
 import java.io.File
@@ -73,7 +73,7 @@ class Clips(context: Context) {
         recording = true
         jarvis.voiceLines.record(todo, onLine = { line, pcm -> writeWav(recordedFile(line), pcm) }) { error ->
             recording = false
-            if (error != null) Log.w(TAG, "Recording Jarvis's lines: $error")
+            if (error != null) JarvisLog.w(TAG, "Recording Jarvis's lines: $error")
             done(error)
         }
     }
@@ -184,7 +184,7 @@ class Clips(context: Context) {
             // Never let a broken file block what comes next.
             main.postDelayed({ finish() }, (p.duration.coerceIn(500, MAX_CLIP_MS)) + 500L)
         } catch (e: Exception) {
-            Log.w(TAG, "Cannot play ${file.name}", e)
+            JarvisLog.w(TAG, "Cannot play ${file.name}", e)
             finish()
         }
     }
@@ -268,7 +268,7 @@ class Clips(context: Context) {
     }
 
     companion object {
-        private const val TAG = "JarvisClips"
+        private const val TAG = "Clips"
         private const val RATE = 24000 // Gemini's voice
         private const val MAX_CLIP_MS = 15_000
         private var recording = false

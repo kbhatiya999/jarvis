@@ -45,7 +45,10 @@ enum CheckIn {
 
     /// Returns what happened, in words for the Active mode screen.
     static func run(app: String?, force: Bool = false) async -> String {
+        IOSLog.shared.install()
         let jarvis = Jarvis.companion.setUp(platform: IOSPlatform())
+        jarvis.languageCode = IOSLog.languageCode
+        jarvis.bridge.defaultUrl = (Bundle.main.infoDictionary?["JarvisBridgeURL"] as? String) ?? ""
         let active = jarvis.active
         guard speaker == nil else { return "Jarvis is already speaking." }
         guard jarvis.apiKey.value != nil else { return "Add a Gemini API key first." }

@@ -1,7 +1,7 @@
 package com.kbhatiya999.jarvis
 
 import android.content.Context
-import android.util.Log
+import com.kbhatiya999.jarvis.core.JarvisLog
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -49,7 +49,7 @@ class WakeListener(
             LibVosk.setLogLevel(LogLevel.WARNINGS)
             Model(Models.dir(context).absolutePath)
         } catch (e: Throwable) {
-            Log.w(TAG, "Cannot load the speech model", e)
+            JarvisLog.w(TAG, "Cannot load the speech model", e)
             running = false
             return
         }
@@ -111,10 +111,10 @@ class WakeListener(
     private fun check(text: String, fired: MutableSet<String>): Boolean {
         val t = " ${text.replace("[unk]", " ").trim().replace(Regex("\\s+"), " ")} "
         if (" jarvis " !in t) return false
-        if ("name" !in fired) { fired += "name"; onName() }
+        if ("name" !in fired) { fired += "name"; JarvisLog.d(TAG, "heard: Jarvis"); onName() }
         return when {
-            " jarvis power down " in t -> { onPowerDown(); true }
-            " jarvis wake up " in t -> { onWake(); true }
+            " jarvis power down " in t -> { JarvisLog.i(TAG, "heard: Jarvis power down"); onPowerDown(); true }
+            " jarvis wake up " in t -> { JarvisLog.i(TAG, "heard: Jarvis wake up"); onWake(); true }
             else -> false
         }
     }
@@ -161,7 +161,7 @@ class WakeListener(
                 if (!tmp.renameTo(dir)) return "Could not save the speech model."
                 null
             } catch (e: Exception) {
-                Log.w(TAG, "Model download failed", e)
+                JarvisLog.w(TAG, "Model download failed", e)
                 "Download failed: ${e.message ?: e}"
             } finally {
                 tmp.deleteRecursively()
@@ -170,7 +170,7 @@ class WakeListener(
     }
 
     private companion object {
-        const val TAG = "JarvisWake"
+        const val TAG = "Wake"
         // Only these can be recognised; everything else comes out as [unk].
         const val GRAMMAR = """["jarvis wake up", "jarvis power down", "jarvis", "[unk]"]"""
         const val MIN_SOUND_RMS = 150.0 // a quiet room is well below this

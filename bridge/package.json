@@ -1,0 +1,12 @@
+{
+  "name": "jarvis-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server that lets the Gemini app speak through your Jarvis",
+  "scripts": {
+    "start": "node src/node.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": { "node": ">=20" }
+}

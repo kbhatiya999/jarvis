@@ -50,6 +50,10 @@ class Tools internal constructor(private val jarvis: Jarvis) {
             matches.size > 1 -> reply(error("\"$contactName\" matches ${matches.joinToString(", ") { it.name }}; ask the user which one."))
             else -> jarvis.scope.launch {
                 val contact = matches[0]
+                if (jarvis.bridge.isBridge(contact.address)) {
+                    reply(error("${contact.name} is the Gemini app reporting back through Jarvis; it can't receive messages."))
+                    return@launch
+                }
                 val err = jarvis.relay.send(contact, text.trim())
                 if (err == null) {
                     jarvis.conversation.addSent(contact.name, text.trim())

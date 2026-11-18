@@ -22,7 +22,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.telecom.TelecomManager
-import android.util.Log
+import com.kbhatiya999.jarvis.core.JarvisLog
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import java.text.SimpleDateFormat
@@ -45,7 +45,26 @@ class ActiveModeService : Service() {
     private var writer: Conversation.Writer? = null
     private var micOn = false
     private var focus: AudioFocusRequest? = null
-    private val endSession = Runnable { end() }
+    private val endSession = Runnable { end(reason = "reached the 3-minute limit") }
+    private val endAfterGoodbye = Runnable { end(reason = "goodbye") }
+    private var sessionStartedAt = 0L
+    // Logs Google's audio during a conversation (is Gemini still talking after waking Jarvis?).
+    private val otherAudio by lazy { OtherAudioLog(getSystemService(AudioManager::class.java)) }
+    // The user spoke this turn / Jarvis answered this turn / the 10 s wait for an answer was already used in this window.
+    private var userTurnOpen = false
+    private var jarvisSpoke = false
+    private var replyWaitUsed = false
+    // The last "phrase listener" state written to the log, so only changes are logged.
+    private var lastWakeState: String? = null
+    private val screen = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            JarvisLog.i(TAG, when (intent.action) {
+                Intent.ACTION_SCREEN_OFF -> "screen off"
+                Intent.ACTION_USER_PRESENT -> "phone unlocked"
+                else -> "screen on, ${if (locked()) "locked" else "unlocked"}"
+            })
+        }
+    }
     private var streaming = false
     private var listenMs = ActiveMode.DEFAULT_LISTEN * 1000L
     private var wake: WakeListener? = null
@@ -74,7 +93,7 @@ class ActiveModeService : Service() {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification("Watching for app launches"), type)
         } catch (e: Exception) {
             // e.g. mic permission missing, or started from the background.
-            Log.w(TAG, "Cannot start active mode", e)
+            JarvisLog.w(TAG, "Cannot start active mode", e)
             settings.activeEnabled = false
             stopSelf()
             return
@@ -91,8 +110,16 @@ class ActiveModeService : Service() {
             addAction(android.os.PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
         }
         registerReceiver(power, filter)
+        registerReceiver(screen, android.content.IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_USER_PRESENT)
+        })
+        JarvisLog.i(TAG, "active mode started, ${if (locked()) "locked" else "unlocked"}")
         refreshWake()
     }
+
+    private fun locked() = getSystemService(KeyguardManager::class.java).isKeyguardLocked
 
     /** Starts or stops listening for "Jarvis ..." to match the setting (and the model being there). */
     private fun refreshWake() {
@@ -123,6 +150,18 @@ class ActiveModeService : Service() {
             wake?.stop()
             wake = null
         }
+        val why = when {
+            mode == ActiveMode.WAKE_OFF -> "voice commands are off"
+            !ready -> "speech model not downloaded"
+            always && wakePaused != null -> "resting: $wakePaused"
+            always -> "always on"
+            else -> "only during conversations"
+        }
+        val state = "${if (wake != null) "listening" else "not listening"} ($why)"
+        if (state != lastWakeState) {
+            lastWakeState = state
+            JarvisLog.i(TAG, "phrase listener: $state")
+        }
         if (session == null) update(idleText())
     }
 
@@ -148,6 +187,8 @@ class ActiveModeService : Service() {
             alreadyAwake()
             return
         }
+        JarvisLog.i(TAG, "wake attempt (${if (wakeForced) "routine" else "phrase"}): ${if (locked()) "locked" else "unlocked"}, " +
+            "audio mode ${getSystemService(AudioManager::class.java).mode}")
         val skip = when {
             VoiceChatService.running -> "voice chat is open"
             (if (wakeForced) phoneCall() else inCall()) -> "in a call"
@@ -155,7 +196,7 @@ class ActiveModeService : Service() {
             else -> null
         }
         if (skip != null) {
-            Log.i(TAG, "Wake skipped: $skip")
+            JarvisLog.i(TAG, "wake skipped: $skip")
             return
         }
         startSession(
@@ -164,6 +205,7 @@ class ActiveModeService : Service() {
                 "with send_message unless it's unclear.",
             cue = null,
             countsForCooldown = false,
+            source = if (wakeForced) "routine wake" else "wake phrase",
         )
         val t = token
         update("Listening")
@@ -178,7 +220,7 @@ class ActiveModeService : Service() {
      */
     private fun alreadyAwake() {
         val s = session ?: return
-        Log.i(TAG, "Wake: already awake")
+        JarvisLog.i(TAG, "wake: already awake")
         s.interrupt()
         main.removeCallbacks(listenTimeout)
         main.removeCallbacks(startListening)
@@ -209,7 +251,7 @@ class ActiveModeService : Service() {
     private fun wakeAfterGoogle() {
         main.removeCallbacks(routineWait)
         routineWaitStart = System.currentTimeMillis()
-        Log.i(TAG, "Routine wake: waiting for Google to finish")
+        JarvisLog.i(TAG, "routine wake: waiting for Google to finish")
         main.post(routineWait)
     }
 
@@ -227,7 +269,7 @@ class ActiveModeService : Service() {
                 main.postDelayed(this, ROUTINE_POLL_MS)
                 return
             }
-            Log.i(TAG, "Routine wake after ${waited} ms" + if (busy) " (still busy: mode ${audio.mode})" else "")
+            JarvisLog.i(TAG, "routine wake after ${waited} ms" + if (busy) " (still busy: mode ${audio.mode})" else "")
             // You asked out loud: Google's voice session leaving a voice-chat mode set mustn't block it.
             wakeForced = true
             wakePhrase()
@@ -241,7 +283,7 @@ class ActiveModeService : Service() {
         when {
             session != null -> {
                 session?.interrupt()
-                end(sound = false)
+                end(sound = false, reason = "power down")
             }
             VoiceChatService.running -> VoiceChatService.onStopRequested?.invoke()
             else -> return // nothing to stop
@@ -289,12 +331,12 @@ class ActiveModeService : Service() {
         destroyed = true
         main.removeCallbacks(recheckWake)
         main.removeCallbacks(routineWait)
-        if (instance === this) try { unregisterReceiver(power) } catch (e: IllegalArgumentException) { }
+        if (instance === this) try { unregisterReceiver(power); unregisterReceiver(screen) } catch (e: IllegalArgumentException) { }
         wake?.stop()
         wake = null
         clips.stop()
         Chime.stop()
-        end(sound = false)
+        end(sound = false, reason = "service stopped")
         if (streaming) jarvis.relay.releaseStream()
         streaming = false
         if (instance === this) {
@@ -309,7 +351,8 @@ class ActiveModeService : Service() {
         if (!force && !allowedNow(pkgOrName)) return
         if (jarvis.apiKey.value == null) return
         val name = appLabel(pkgOrName)
-        startSession(jarvis.active.appOpenedPrompt(name, now()), ActiveMode.cue(name))
+        JarvisLog.d(TAG) { "app opened: $pkgOrName" }
+        startSession(jarvis.active.appOpenedPrompt(name, now()), ActiveMode.cue(name), source = "app opened")
     }
 
     /** A message from another Jarvis arrived: say it now if that's appropriate, else it waits for the next app open. */
@@ -326,7 +369,7 @@ class ActiveModeService : Service() {
         if (!allowedNow("", ignoreCooldown = true, allowLocked = jarvis.active.speakWhenLocked)) return
         val pending = jarvis.inbox.takePending()
         if (pending.isEmpty()) return
-        startSession(Prompts.relay(pending, now()), "(Messages just arrived. Relay them now.)")
+        startSession(Prompts.relay(pending, now()), "(Messages just arrived. Relay them now.)", source = "incoming message")
     }
 
     /** Talk from the notification or Quick Settings tile, also on the lock screen: Jarvis answers, then listens. */
@@ -337,14 +380,20 @@ class ActiveModeService : Service() {
                 "Converse naturally and briefly.",
             "(The user wants to talk. Answer in two or three words, e.g. \"Yes, Sir?\", then wait for them.)",
             countsForCooldown = false,
+            source = "talk",
         )
     }
 
     private fun now() = SimpleDateFormat("h:mm a, EEEE", Locale.getDefault()).format(Date())
 
     /** [cue] makes Jarvis speak first; null when it already answered (a clip) and should just listen. */
-    private fun startSession(prompt: String, cue: String?, countsForCooldown: Boolean = true) {
+    private fun startSession(prompt: String, cue: String?, countsForCooldown: Boolean = true, source: String) {
         if (jarvis.apiKey.value == null) return
+        JarvisLog.i(TAG, "session start: $source, ${if (locked()) "locked" else "unlocked"}")
+        sessionStartedAt = System.currentTimeMillis()
+        userTurnOpen = false
+        jarvisSpoke = false
+        replyWaitUsed = false
         if (countsForCooldown) jarvis.active.markSpoke()
         listenMs = jarvis.active.listenSeconds * 1000L
         val t = Any().also { token = it }
@@ -359,20 +408,25 @@ class ActiveModeService : Service() {
             if (cue != null) it.sendText(cue)
         }
         main.postDelayed(endSession, MAX_SESSION_MS)
+        otherAudio.start()
         refreshWake() // "only during conversations": start listening for "Jarvis power down"
     }
 
     private fun allowedNow(pkg: String, ignoreCooldown: Boolean = false, allowLocked: Boolean = false): Boolean {
-        if (!jarvis.active.allowed(Calendar.getInstance().get(Calendar.HOUR_OF_DAY), ignoreCooldown)) return false
+        fun no(reason: String): Boolean {
+            JarvisLog.i(TAG, "not speaking up: $reason")
+            return false
+        }
+        if (!jarvis.active.allowed(Calendar.getInstance().get(Calendar.HOUR_OF_DAY), ignoreCooldown)) return no("cooldown, quiet hours or turned off")
         // Android-only checks: calls, silent mode, Do Not Disturb, lock screen, the phone app itself.
         val audio = getSystemService(AudioManager::class.java)
-        if (audio.mode == AudioManager.MODE_IN_CALL || audio.mode == AudioManager.MODE_IN_COMMUNICATION) return false
-        if (audio.ringerMode == AudioManager.RINGER_MODE_SILENT) return false
+        if (audio.mode == AudioManager.MODE_IN_CALL || audio.mode == AudioManager.MODE_IN_COMMUNICATION) return no("in a call (audio mode ${audio.mode})")
+        if (audio.ringerMode == AudioManager.RINGER_MODE_SILENT) return no("phone is on silent")
         val nm = getSystemService(NotificationManager::class.java)
-        if (nm.currentInterruptionFilter > NotificationManager.INTERRUPTION_FILTER_ALL) return false // Do Not Disturb
-        if (!allowLocked && getSystemService(KeyguardManager::class.java).isKeyguardLocked) return false
+        if (nm.currentInterruptionFilter > NotificationManager.INTERRUPTION_FILTER_ALL) return no("Do Not Disturb is on") // Do Not Disturb
+        if (!allowLocked && locked()) return no("phone is locked")
         val dialer = try { getSystemService(TelecomManager::class.java)?.defaultDialerPackage } catch (e: Exception) { null }
-        return pkg != dialer
+        return if (pkg == dialer) no("the phone app is open") else true
     }
 
     private inner class Callbacks(private val t: Any) : LiveSession.Listener {
@@ -382,15 +436,22 @@ class ActiveModeService : Service() {
         override fun onUserText(delta: String) {
             if (!live()) return
             writer?.userDelta(delta)
-            // They're talking: keep the session, but don't hang forever if Jarvis never answers.
-            main.removeCallbacks(listenTimeout)
-            main.postDelayed(listenTimeout, REPLY_WAIT_MS)
+            // They're talking: keep the session, but don't hang forever if Jarvis never answers. This wait is
+            // given once per answer window: more speech afterwards (someone else's chat nearby) doesn't keep the
+            // session alive, so it still ends when nothing is said to Jarvis.
+            userTurnOpen = true
+            if (!replyWaitUsed) {
+                replyWaitUsed = true
+                main.removeCallbacks(listenTimeout)
+                main.postDelayed(listenTimeout, REPLY_WAIT_MS)
+            }
             update("Listening")
         }
 
         override fun onJarvisText(delta: String) {
             if (!live()) return
             writer?.jarvisDelta(delta)
+            jarvisSpoke = true
             main.removeCallbacks(listenTimeout)
             update("Speaking")
         }
@@ -398,12 +459,22 @@ class ActiveModeService : Service() {
         override fun onTurnComplete() {
             if (!live()) return
             writer?.closeTurn()
+            val heardUser = userTurnOpen
+            val addressed = jarvisSpoke
+            userTurnOpen = false
+            jarvisSpoke = false
             val wait = session?.playbackRemainingMs() ?: 0
             if (endAfterTurn) {
                 // It said goodbye: end once that has played.
                 main.removeCallbacks(listenTimeout)
                 main.removeCallbacks(startListening)
-                main.postDelayed(endSession, wait + 300)
+                main.postDelayed(endAfterGoodbye, wait + 300)
+                return
+            }
+            if (heardUser && !addressed) {
+                // Speech that wasn't for Jarvis (Gemini stayed quiet): no fresh answer window for it. The one that
+                // is running ends the session if nobody speaks to Jarvis.
+                JarvisLog.i(TAG, "heard speech not meant for Jarvis: answer window not extended")
                 return
             }
             // Once Jarvis has finished speaking, open the mic and give the user time to answer.
@@ -420,13 +491,13 @@ class ActiveModeService : Service() {
             endAfterTurn = true
             // In case the goodbye never comes.
             main.removeCallbacks(endSession)
-            main.postDelayed(endSession, END_FALLBACK_MS)
+            main.postDelayed(endAfterGoodbye, END_FALLBACK_MS)
         }
 
         override fun onClosed(reason: String?) {
             if (!live()) return
-            if (reason != null) Log.w(TAG, "Session closed: $reason")
-            end()
+            if (reason != null) JarvisLog.w(TAG, "session closed: $reason")
+            end(reason = if (reason != null) "connection closed" else "closed by Gemini")
         }
     }
 
@@ -440,7 +511,7 @@ class ActiveModeService : Service() {
         if (s != null && now - s.lastVoiceAt < VOICE_RECENT_MS && now - listenStartedAt < listenMs + MAX_VOICE_WAIT_MS) {
             main.postDelayed(listenTimeout, VOICE_RECHECK_MS)
         } else {
-            end()
+            end(reason = "nobody spoke to Jarvis in time")
         }
     }
     private var listenStartedAt = 0L
@@ -459,13 +530,17 @@ class ActiveModeService : Service() {
         }
         update("Listening")
         listenStartedAt = System.currentTimeMillis()
+        replyWaitUsed = false
         main.removeCallbacks(listenTimeout)
         main.postDelayed(listenTimeout, listenMs)
     }
 
     /** Ends the conversation; [sound] plays the falling "stopped listening" tone (not on power down / shutdown). */
-    private fun end(sound: Boolean = true) {
+    private fun end(sound: Boolean = true, reason: String = "ended") {
+        if (session != null) JarvisLog.i(TAG, "session end: $reason, after ${(System.currentTimeMillis() - sessionStartedAt) / 1000} s")
         if (sound && session != null && !destroyed) chime(Chime.Kind.SLEEP)
+        otherAudio.stop()
+        main.removeCallbacks(endAfterGoodbye)
         main.removeCallbacks(endSession)
         main.removeCallbacks(listenTimeout)
         main.removeCallbacks(startListening)
@@ -537,7 +612,7 @@ class ActiveModeService : Service() {
     }
 
     companion object {
-        private const val TAG = "JarvisActive"
+        private const val TAG = "Active"
         private const val CHANNEL = "active_mode"
         private const val NOTIFICATION_ID = 1
         private const val ACTION_STOP = "com.kbhatiya999.jarvis.STOP"

@@ -33,7 +33,7 @@ class Conversation internal constructor(private val platform: Platform) {
     }
 
     fun addSent(name: String, text: String) = add(Message.SENT, "To $name's Jarvis: $text")
-    fun addReceived(name: String, text: String) = add(Message.RECEIVED, "From $name's Jarvis: $text")
+    fun addReceived(name: String, text: String, sender: String = "$name's Jarvis") = add(Message.RECEIVED, "From $sender: $text")
 
     internal fun add(role: String, text: String): Long {
         val m = Message(role, text, platform.nowMillis(), nextId++)

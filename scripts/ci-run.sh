@@ -14,8 +14,8 @@ if [ -n "$(git rev-list origin/main..main)" ]; then echo "Pushing main"; git pus
 args=()
 if [ "$kind" = release ]; then
   V="$(cat .tilt-inputs/version 2>/dev/null || true)"
-  args=(-f "version=$V")
-  rm -f .tilt-inputs/version
+  args=(-f "version=$V" -f "log_level=$(cat .tilt-inputs/log-level 2>/dev/null || true)")
+  rm -f .tilt-inputs/version .tilt-inputs/log-level
   echo "Release ${V:-<next patch>} on GitHub"
 fi
 out="$(gh workflow run "$kind.yml" --ref main ${args[@]+"${args[@]}"} 2>&1)"

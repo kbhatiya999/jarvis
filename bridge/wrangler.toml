@@ -1,0 +1,6 @@
+# Cloudflare Workers config for the Jarvis bridge. Deploy with: mise run tilt:bridge-deploy
+# (credentials come from fnox: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID).
+name = "jarvis-bridge"
+main = "src/cloudflare.js"
+compatibility_date = "2026-10-01"
+workers_dev = true

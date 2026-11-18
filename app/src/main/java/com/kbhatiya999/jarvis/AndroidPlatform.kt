@@ -8,7 +8,7 @@ import android.content.Intent
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
-import android.util.Log
+import com.kbhatiya999.jarvis.core.JarvisLog
 import androidx.core.app.NotificationCompat
 import com.kbhatiya999.jarvis.core.AudioIO
 import com.kbhatiya999.jarvis.core.Jarvis
@@ -113,7 +113,7 @@ class AndroidPlatform private constructor(private val context: Context) : Platfo
     override fun createAudio(speakOnly: Boolean): AudioIO = AndroidAudio() // active mode opens the mic itself
     override fun nowMillis() = System.currentTimeMillis()
     override fun log(message: String) {
-        Log.i("Jarvis", message)
+        JarvisLog.i("Platform", message)
     }
 
     private fun key(alias: String): SecretKey {
@@ -148,6 +148,12 @@ class AndroidPlatform private constructor(private val context: Context) : Platfo
         private const val URL = Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
 
         /** The shared Jarvis for this process; safe to call from anywhere on the main thread. */
-        fun jarvis(context: Context): Jarvis = Jarvis.setUp(AndroidPlatform(context.applicationContext))
+        fun jarvis(context: Context): Jarvis {
+            AppLog.init(context)
+            return Jarvis.setUp(AndroidPlatform(context.applicationContext)).also {
+                it.languageCode = AppLog.languageCode()
+                it.bridge.defaultUrl = BuildConfig.BRIDGE_URL
+            }
+        }
     }
 }

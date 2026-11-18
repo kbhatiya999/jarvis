@@ -8,9 +8,11 @@ mkdir -p .tilt-inputs
 V="$(cat .tilt-inputs/version 2>/dev/null || true)"
 [ -n "$V" ] || V="$(scripts/next-version.sh)"
 [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Bad version '$V' (want x.y.z)" >&2; exit 1; }
+L="$(cat .tilt-inputs/log-level 2>/dev/null || true)"
+[ -z "$L" ] || [[ "$L" =~ ^(error|warn|info|debug)$ ]] || { echo "Bad log level '$L' (error, warn, info or debug)" >&2; exit 1; }
 [ "$(git branch --show-current)" = main ] || { echo "Release from main only." >&2; exit 1; }
 [ -z "$(git status --porcelain)" ] || { echo "Working tree not clean; commit first." >&2; git status --short >&2; exit 1; }
 git fetch -q --tags origin
 ! git rev-parse -q --verify "refs/tags/v$V" >/dev/null || { echo "Tag v$V already exists." >&2; exit 1; }
 echo "$V" > .tilt-inputs/version
-echo "Release v$V: checks passed"
+echo "Release v$V: checks passed (log level ${L:-info})"

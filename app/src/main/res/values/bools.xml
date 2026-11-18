@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Jarvis as the phone's assistant app: Android 12+ only. Before that the assistant app must also be the phone's
+         speech recogniser for every app (voice typing), which Jarvis isn't. -->
+    <bool name="assistant_app">false</bool>
+</resources>

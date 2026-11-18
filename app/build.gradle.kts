@@ -12,6 +12,11 @@ val appVersion = (System.getenv("APP_VERSION")?.takeIf { it.isNotBlank() } ?: "0
 val appVersionCode = System.getenv("APP_VERSION_CODE")?.toIntOrNull()
     ?: ((System.currentTimeMillis() / 60_000L) - 26_297_280L).toInt() // minutes since 2020-01-01
 
+// How much the app logs by default (the user can change it under Settings > Logs): info for stable releases,
+// debug for dev builds and releases we are unsure about. scripts/build.sh sets LOG_LEVEL.
+val logLevel = (System.getenv("LOG_LEVEL")?.takeIf { it.isNotBlank() } ?: "debug").lowercase()
+require(logLevel in setOf("error", "warn", "info", "debug")) { "LOG_LEVEL must be error, warn, info or debug (got '$logLevel')" }
+
 android {
     namespace = "com.kbhatiya999.jarvis"
     compileSdk = 35
@@ -22,6 +27,9 @@ android {
         targetSdk = 35
         versionCode = appVersionCode
         versionName = appVersion
+        buildConfigField("String", "LOG_LEVEL", "\"$logLevel\"")
+        // The Jarvis bridge's address for Connect Gemini (scripts/build.sh sets BRIDGE_URL from fnox).
+        buildConfigField("String", "BRIDGE_URL", "\"${System.getenv("BRIDGE_URL")?.trim()?.trimEnd('/') ?: ""}\"")
         // Phones only: the speech engine (Vosk) is ~10 MB per CPU type; x86 and MIPS builds would add ~25 MB.
         // Emulators on Apple Silicon Macs are ARM too.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }

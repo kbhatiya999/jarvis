@@ -84,6 +84,17 @@ class Identity private constructor(
         }
 
         private fun aad(senderAddress: String, recipientTopic: String) = "$senderAddress>$recipientTopic".encodeToByteArray()
+
+        /**
+         * A fresh identity that lives elsewhere (the Gemini bridge): its address, and its private key as PKCS#8
+         * DER (what WebCrypto imports). Nothing is stored.
+         */
+        fun newDetached(): Pair<String, ByteArray> {
+            val pair = ecdh.keyPairGenerator(EC.Curve.P256).generateKeyBlocking()
+            val pub = pair.publicKey.encodeToByteArrayBlocking(EC.PublicKey.Format.DER)
+            val topic = "jv_" + B64.url(CryptographyRandom.nextBytes(18))
+            return (PREFIX + topic + "." + B64.url(pub)) to pair.privateKey.encodeToByteArrayBlocking(EC.PrivateKey.Format.DER)
+        }
     }
 }
 

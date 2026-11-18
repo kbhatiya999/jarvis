@@ -12,7 +12,7 @@ object Prompts {
         "Use it naturally, as you would recall past exchanges; do not recite it."
 
     /** What Jarvis knows about the user's setup: their reminders, contacts and how to use the tools. */
-    fun context(reminders: List<String>, contacts: List<Contact>, myName: String): String = buildString {
+    fun context(reminders: List<String>, contacts: List<Contact>, myName: String, languages: List<String> = Languages.DEFAULT): String = buildString {
         if (myName.isNotBlank()) append("The user's name is ${myName}. ")
         append("The user's standing reminders, which you look after: ")
         append(if (reminders.isEmpty()) "none yet" else reminders.joinToString("; "))
@@ -26,8 +26,29 @@ object Prompts {
         append("in your memory marked [You sent a message] and [Message received]. ")
         append("When the user wants you to stop or is done (\"stop\", \"that's enough\", \"never mind\", ")
         append("\"goodbye\"), reply with a very short acknowledgement in character, e.g. \"As you wish, Sir.\", and call ")
-        append("end_conversation.")
+        append("end_conversation.\n")
+        append(languageRules(languages)).append('\n')
+        append(addressedRules)
     }
+
+    /** Keeps what the user says, and what Jarvis saves for them, in the language they speak. */
+    fun languageRules(languages: List<String>): String {
+        val names = languages.map { "${Languages.name(it)} ($it)" }
+        val spoken = if (names.size == 1) "The user speaks ${names[0]}." else
+            "The user speaks ${names.dropLast(1).joinToString(", ")} and ${names.last()}, and may mix them in one sentence."
+        val reply = if (names.size == 1) "Answer in that language." else
+            "Answer in the language the user just spoke (if they mix, in the one they used most); when unsure, use " +
+                "${Languages.name(languages[0])}."
+        return "$spoken $reply Never answer in any other language, even if the transcript looks like one. " +
+            "Reminders you save with add_reminder, and messages you send with send_message, stay in the language the " +
+            "user spoke: never translate them into another language."
+    }
+
+    /** The microphone is open in everyday places: only answer what is meant for Jarvis. */
+    const val addressedRules = "Your microphone is open in everyday places, so you will often hear things that are not " +
+        "for you: the user talking to other people or to themselves, voices on a TV, background noise, half-heard " +
+        "fragments. Answer only speech that is clearly addressed to you. If it sounds like a conversation with " +
+        "someone else, or you are not sure it is meant for you, say nothing at all and keep waiting."
 
     fun proactive(appName: String, time: String, pending: List<String>, canListen: Boolean = true) = buildString {
         append("ACTIVE MODE. You speak up on your own; the user did not ask. They just opened the app \"$appName\" ")

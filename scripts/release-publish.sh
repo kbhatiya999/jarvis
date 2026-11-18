@@ -19,5 +19,5 @@ git push -q origin main
 git tag -a "v$V" -m "Jarvis $V"
 git push -q origin "v$V"
 gh release create "v$V" "${assets[@]}" --verify-tag --title "Jarvis $V" --generate-notes
-rm -f .tilt-inputs/version
+rm -f .tilt-inputs/version .tilt-inputs/log-level
 echo "Published v$V. Obtainium will offer it on its next check."

@@ -1,0 +1,19 @@
+name: Bridge
+
+# Deploy the Jarvis bridge (bridge/) to Cloudflare Workers without the Mac: Actions -> Bridge -> Run workflow,
+# or `mise run tilt:bridge-deploy-ci`. Same script as `mise run tilt:bridge-deploy`. Needs the repo secrets
+# CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID (tilt:bridge-setup offers to copy them). Manual only.
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - name: deploy
+        run: mise run -q bridge:deploy

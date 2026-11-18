@@ -17,12 +17,20 @@ class Jarvis private constructor(val platform: Platform) {
     val identity: Identity by lazy { Identity.load(platform) }
     val inbox = Inbox(this)
     val relay = Relay(this)
+    /** The Gemini app talking through Jarvis (bridge/ in this repo). */
+    val bridge = GeminiBridge(this)
     val tools = Tools(this)
     val active = ActiveMode(this)
     val voiceLines = VoiceLines(this)
 
     /** The Gemini API key, kept by the platform as a secret. */
     val apiKey = Watchable(platform.secrets.get("api_key")?.takeIf { it.isNotBlank() })
+
+    /** The phone's own language (BCP-47), set by the platform: for logs and as a suggestion, not what Jarvis uses. */
+    var languageCode: String = "en-IN"
+
+    /** The languages the user speaks to Jarvis (default English (India), Hindi): what Gemini hears and speaks. */
+    val languages = Languages(platform.store("jarvis_languages"))
 
     /** Called after a message from a contact arrives (e.g. active mode says it out loud). */
     var onMessageArrived: (() -> Unit)? = null
@@ -36,7 +44,7 @@ class Jarvis private constructor(val platform: Platform) {
     /** Persona, the user's reminders and contacts, memory, plus optional instructions for this session. */
     fun systemPrompt(extra: String? = null): String = buildString {
         append(Prompts.PERSONA)
-        append("\n\n").append(Prompts.context(reminders.items.value, contacts.contacts.value, contacts.myName.value))
+        append("\n\n").append(Prompts.context(reminders.items.value, contacts.contacts.value, contacts.myName.value, languages.codes.value))
         if (extra != null) append("\n\n").append(extra)
         val memory = conversation.memoryText()
         if (memory.isNotEmpty()) append("\n\n").append(Prompts.MEMORY_INTRO).append('\n').append(memory)
@@ -58,7 +66,11 @@ class Jarvis private constructor(val platform: Platform) {
     companion object {
         private var instance: Jarvis? = null
 
-        fun setUp(platform: Platform): Jarvis = instance ?: Jarvis(platform).also { instance = it }
+        fun setUp(platform: Platform): Jarvis = instance ?: Jarvis(platform).also {
+            instance = it
+            // A platform that set up its own log (Android: file + logcat) keeps it; otherwise lines go to its log().
+            if (JarvisLog.sink == null) JarvisLog.sink = LogSink { level, tag, message -> platform.log("${level.letter}/$tag: $message") }
+        }
 
         val shared: Jarvis get() = instance ?: error("Jarvis.setUp(platform) first")
     }

@@ -10,6 +10,9 @@ on:
       version:
         description: Version (x.y.z). Empty = next patch.
         required: false
+      log_level:
+        description: How much the app logs by default (error, warn, info or debug). Empty = info.
+        required: false
 
 permissions:
   contents: write
@@ -44,7 +47,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: release-check
-        run: scripts/tilt-input.sh version "${{ inputs.version }}" && mise run -q release:check
+        run: scripts/tilt-input.sh version "${{ inputs.version }}" && scripts/tilt-input.sh log-level "${{ inputs.log_level }}" && mise run -q release:check
       - name: lint
         run: mise run -q lint
       - name: test

@@ -7,7 +7,7 @@ import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
 import android.os.Build
-import android.util.Log
+import com.kbhatiya999.jarvis.core.JarvisLog
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -92,7 +92,7 @@ object MicHub {
                 .apply { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) setPrivacySensitive(false) }
                 .build()
         } catch (e: Exception) {
-            Log.w("JarvisMic", "Cannot open the mic", e)
+            JarvisLog.w("Mic", "Cannot open the mic", e)
             return null
         }
         if (rec.state != AudioRecord.STATE_INITIALIZED) {

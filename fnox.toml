@@ -12,3 +12,9 @@ SIGNING_KEY_ALIAS = { default = "jarvis", description = "Key alias in the keysto
 SIGNING_KEY_PASSWORD = { default = "", description = "Key password; set in fnox.local.toml", if_missing = "ignore" }
 SIGNING_KEYSTORE_B64 = { default = "", description = "Base64 keystore, copied to GitHub secrets by `mise run tilt:secrets-push`", if_missing = "ignore" }
 IOS_TEAM_ID = { default = "", description = "Your free Apple ID team (Xcode › Settings › Accounts) for simulator/iPhone builds from this Mac; empty = sign locally without a team. Set in fnox.local.toml", if_missing = "ignore" }
+
+# The Jarvis bridge (bridge/). `mise run tilt:bridge-setup` and `tilt:bridge-deploy` fill these in fnox.local.toml.
+CLOUDFLARE_API_TOKEN = { default = "", description = "Cloudflare API token (Edit Cloudflare Workers template) to deploy the bridge; set by tilt:bridge-setup", if_missing = "ignore" }
+CLOUDFLARE_ACCOUNT_ID = { default = "", description = "Cloudflare account the bridge deploys to; set by tilt:bridge-setup", if_missing = "ignore" }
+BRIDGE_URL = { default = "", description = "Bridge address app builds put in Connect Gemini (https://jarvis-bridge.<name>.workers.dev); set by tilt:bridge-deploy", if_missing = "ignore" }
+BRIDGE_PORT = { default = "8787", description = "Port of the local bridge (tilt:bridge-dev)" }

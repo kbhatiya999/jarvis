@@ -84,6 +84,11 @@ private val ROUTINE_STEPS = listOf(
         ROUTINE_PHRASE,
     ),
     RoutineStep("Save. Then lock the phone and say \"Hey Google, $ROUTINE_PHRASE\"."),
+    RoutineStep(
+        "If Gemini keeps answering after Jarvis wakes, turn off its follow-up listening (\"Continued conversation\") " +
+            "in Gemini's settings, so only Jarvis carries on.",
+    ),
+    RoutineStep("Doesn't wake? Menu › Self-check shows which part isn't working."),
 )
 
 private val WAKE_OPTIONS = listOf(
@@ -112,7 +117,7 @@ private fun openAppInfo(context: Context) = context.startActivity(
     Intent(AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
 )
 
-private fun openNotificationAccess(context: Context) {
+internal fun openNotificationAccess(context: Context) {
     val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         Intent(AndroidSettings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
             .putExtra(AndroidSettings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, RoutineListener.component(context).flattenToString())
@@ -446,10 +451,16 @@ private fun ChipRow(values: List<Int>, selected: Int, label: (Int) -> String, on
 }
 
 /** Puts [text] on the clipboard (Android 13+ shows its own confirmation; older versions get a toast). */
-private fun copyText(context: Context, text: String) {
+/** Copies [text]; [sensitive] hides it from the clipboard preview (a secret link). */
+internal fun copyText(context: Context, text: String, sensitive: Boolean = false) {
     val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
-    clipboard.setPrimaryClip(android.content.ClipData.newPlainText(text, text))
+    val clip = android.content.ClipData.newPlainText(if (sensitive) "Jarvis link" else text, text)
+    if (sensitive) clip.description.extras = android.os.PersistableBundle().apply {
+        putBoolean("android.content.extra.IS_SENSITIVE", true)
+    }
+    clipboard.setPrimaryClip(clip)
     if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) {
-        android.widget.Toast.makeText(context, "Copied \"$text\"", android.widget.Toast.LENGTH_SHORT).show()
+        val shown = if (sensitive || text.length > 40) "Copied" else "Copied \"$text\""
+        android.widget.Toast.makeText(context, shown, android.widget.Toast.LENGTH_SHORT).show()
     }
 }

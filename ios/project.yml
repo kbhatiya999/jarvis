@@ -30,6 +30,10 @@ targets:
         OTHER_LDFLAGS: [-framework, JarvisCore]
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         CODE_SIGN_STYLE: Automatic
+        # How much the app logs by default; scripts/ios-build.sh sets it (info for releases, debug otherwise).
+        JARVIS_LOG_LEVEL: debug
+        # The Jarvis bridge address for Connect Gemini; scripts/ios-build.sh sets it from fnox (BRIDGE_URL).
+        JARVIS_BRIDGE_URL: ""
     preBuildScripts:
       - name: Build shared Kotlin (JarvisCore)
         basedOnDependencyAnalysis: false

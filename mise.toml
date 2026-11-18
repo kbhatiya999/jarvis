@@ -9,6 +9,18 @@ tilt = "latest"
 fnox = "latest"
 gh = "latest"
 xcodegen = { version = "latest", os = ["macos"] } # generates ios/Jarvis.xcodeproj
+jq = "latest"
+# The Jarvis bridge (bridge/): an MCP server on Cloudflare Workers
+node = "24"
+"npm:wrangler" = "4.158.0"
+cloudflared = "2026.10.7" # tilt:bridge-tunnel: public https address for the local bridge
+ruby = "3.4"
+cmake = "latest" # gollum: builds rugged (libgit2)
+"conda:pkgconf" = "latest" # gollum: rugged needs pkg-config
+ghcup = "latest" # tilt:gitit: GHC + cabal installed into .tilt-inputs, gitit built on first run
+uv = "latest" # tilt:otterwiki runs from PyPI via uv
+"github:go-gitea/gitea" = { version = "latest", asset_pattern = "gitea-*-darwin-arm64", os = ["macos"] } # tilt:gitea (forgejo comes from brew: no macOS binary)
+"github:perber/leafwiki" = { version = "latest", asset_pattern = "leafwiki-*-darwin-arm64", os = ["macos"] } # tilt:leafwiki: wiki, Markdown on disk
 
 # How to use this file
 #
@@ -46,8 +58,11 @@ run = 'scripts/tilt-ensure.sh && tilt logs --since 30m ${usage_name:-}'
 
 [tasks."tilt:release"]
 description = "Release from this Mac: check -> lint -> signed build -> publish for Obtainium"
-usage = 'arg "[version]" help="x.y.z; defaults to the next patch"'
-run = 'scripts/tilt-input.sh version "${usage_version:-}" && scripts/tilt-run.sh release'
+usage = '''
+arg "[version]" help="x.y.z; defaults to the next patch"
+flag "--log-level <level>" help="What the app logs by default: error, warn, info (default) or debug. Use debug for a release we are unsure about."
+'''
+run = 'scripts/tilt-input.sh version "${usage_version:-}" && scripts/tilt-input.sh log-level "${usage_log_level:-}" && scripts/tilt-run.sh release'
 
 [tasks."tilt:install"]
 description = "Install on the phone: signed dev build -> adb install (upgrades the Obtainium copy)"
@@ -73,8 +88,11 @@ run = "scripts/tilt-run.sh build-ci"
 
 [tasks."tilt:release-ci"]
 description = "Release on GitHub Actions instead of this Mac"
-usage = 'arg "[version]" help="x.y.z; defaults to the next patch"'
-run = 'scripts/tilt-input.sh version "${usage_version:-}" && scripts/tilt-run.sh release-ci'
+usage = '''
+arg "[version]" help="x.y.z; defaults to the next patch"
+flag "--log-level <level>" help="What the app logs by default: error, warn, info (default) or debug."
+'''
+run = 'scripts/tilt-input.sh version "${usage_version:-}" && scripts/tilt-input.sh log-level "${usage_log_level:-}" && scripts/tilt-run.sh release-ci'
 
 [tasks."tilt:ios-build"]
 description = "Build the iOS app (.ipa for AltStore/SideStore); needs Xcode"
@@ -121,7 +139,164 @@ run = "scripts/tilt-run.sh keystore-gen"
 description = "Copy the signing key to GitHub secrets (for the Release/Build workflows)"
 run = "scripts/tilt-run.sh secrets-push"
 
+# ---- the Jarvis bridge (bridge/): lets the Gemini app speak through Jarvis
+
+[tasks."tilt:bridge-setup"]
+description = "Once: Cloudflare token and account for the bridge, into fnox.local.toml (asks in this terminal)"
+usage = 'flag "--reset" help="Replace the saved token"'
+run = 'scripts/bridge-setup.sh ${usage_reset:+--reset}'
+
+[tasks."tilt:bridge-check"]
+description = "Check the bridge's Cloudflare setup (never prints the token)"
+run = "scripts/tilt-run.sh bridge-check"
+
+[tasks."tilt:bridge-test"]
+description = "Bridge tests"
+run = "scripts/tilt-run.sh bridge-test"
+
+[tasks."tilt:bridge-dev"]
+description = "Run the bridge locally (a Tilt service, restarts on change) on http://localhost:8787"
+run = "scripts/bridge-serve.sh dev"
+
+[tasks."tilt:gollum"]
+description = "Run Gollum (wiki over the project root's git repo) as a Tilt service on http://localhost:4567"
+run = "scripts/tilt-serve.sh gollum \"curl -fsS http://localhost:4567 >/dev/null && echo 'Gollum running: http://localhost:4567'\""
+
+[tasks."tilt:otterwiki"]
+description = "Run Otter Wiki (wiki over this repo; first account becomes admin) as a Tilt service on http://localhost:5050"
+run = "scripts/tilt-serve.sh otterwiki \"curl -fsS http://localhost:5050/-/index >/dev/null && echo 'Otter Wiki running: http://localhost:5050'\""
+
+[tasks."tilt:gitit"]
+description = "Run Gitit (wiki over the project root's git repo) as a Tilt service on http://localhost:5001; the first run builds it (slow)"
+run = "scripts/tilt-serve.sh gitit \"curl -fsS http://localhost:5001/ >/dev/null && echo 'Gitit running: http://localhost:5001'\""
+
+[tasks."tilt:gitea"]
+description = "Run Gitea (git forge; first visit shows its setup page) as a Tilt service on http://localhost:3000"
+run = "scripts/tilt-serve.sh gitea \"curl -fsS http://localhost:3000/ >/dev/null && echo 'Gitea running: http://localhost:3000'\""
+
+[tasks."tilt:forgejo"]
+description = "Run Forgejo (git forge; first visit shows its setup page) as a Tilt service on http://localhost:3001"
+run = "scripts/tilt-serve.sh forgejo \"curl -fsS http://localhost:3001/ >/dev/null && echo 'Forgejo running: http://localhost:3001'\""
+
+[tasks."tilt:leafwiki"]
+description = "Run LeafWiki (Markdown wiki in .scratch/leafwiki, local only, no login) as a Tilt service on http://localhost:8080"
+run = "scripts/tilt-serve.sh leafwiki \"curl -fsS http://localhost:8080 >/dev/null && echo 'LeafWiki running: http://localhost:8080'\""
+
+[tasks."tilt:bridge-tunnel"]
+description = "Public https address for the local bridge (temporary, changes each run), to test with the real Gemini"
+run = "scripts/bridge-serve.sh tunnel"
+
+[tasks."tilt:bridge-deploy"]
+description = "Test and deploy the bridge to Cloudflare Workers; saves its address as BRIDGE_URL for app builds"
+run = "scripts/tilt-run.sh bridge-deploy"
+
+[tasks."tilt:bridge-deploy-ci"]
+description = "Deploy the bridge from GitHub Actions instead of this Mac"
+run = "scripts/tilt-run.sh bridge-deploy-ci"
+
+[tasks."tilt:bridge-logs"]
+description = "Live logs of the deployed bridge (Ctrl-C to stop)"
+run = "scripts/bridge-logs.sh"
+
 # ================================================================ steps (hidden; run by Tilt)
+
+[tasks."bridge:check"]
+hide = true
+description = "Check the Cloudflare setup"
+run = "scripts/bridge-check.sh"
+
+[tasks."bridge:test"]
+hide = true
+description = "Bridge unit tests"
+run = "cd bridge && npm test --silent"
+
+[tasks."gollum:serve"]
+hide = true
+description = "Gollum on localhost:4567 (gem installed into .tilt-inputs/gems on first run)"
+run = '''
+export GEM_HOME="$PWD/.tilt-inputs/gems" PATH="$PWD/.tilt-inputs/gems/bin:$PATH"
+command -v gollum >/dev/null || gem install gollum --no-document
+mkdir -p .tilt-inputs
+printf "Precious::App.set(:wiki_options, { index_page: 'README', h1_title: true })\n" > .tilt-inputs/gollum-config.rb
+exec gollum . --host 127.0.0.1 --port 4567 --ref main --config .tilt-inputs/gollum-config.rb
+'''
+
+[tasks."otterwiki:serve"]
+hide = true
+description = "Otter Wiki on localhost:5050 (from PyPI via uv)"
+run = '''
+mkdir -p .tilt-inputs/otterwiki
+printf "REPOSITORY = '%s'\nSECRET_KEY = 'local-only-not-a-secret'\nHOME_PAGE = 'README'\n" "$PWD" > .tilt-inputs/otterwiki/settings.cfg
+export OTTERWIKI_SETTINGS="$PWD/.tilt-inputs/otterwiki/settings.cfg"
+exec uv run --no-project --with otterwiki flask --app otterwiki.server run --host 127.0.0.1 --port 5050
+'''
+
+[tasks."gitit:serve"]
+hide = true
+description = "Gitit on localhost:5001 (GHC, cabal and gitit installed into .tilt-inputs on first run)"
+run = '''
+export GHCUP_INSTALL_BASE_PREFIX="$PWD/.tilt-inputs/haskell" CABAL_DIR="$PWD/.tilt-inputs/haskell/cabal"
+export PATH="$GHCUP_INSTALL_BASE_PREFIX/.ghcup/bin:$CABAL_DIR/bin:$PATH"
+if ! command -v ghc >/dev/null; then
+  ghcup install ghc recommended --set
+  ghcup install cabal recommended --set
+fi
+if ! command -v gitit >/dev/null; then
+  cabal update
+  cabal install gitit --install-method=copy --installdir="$CABAL_DIR/bin" --overwrite-policy=always
+fi
+mkdir -p .tilt-inputs/gitit
+repo="$PWD"
+cd .tilt-inputs/gitit  # gitit writes static/ and templates/ into its working directory
+[ -f gitit.conf ] || gitit --print-default-config > gitit.conf
+perl -pi -e "s/^port:.*/port: 5001/; s/^address:.*/address: 127.0.0.1/; s|^repository-path:.*|repository-path: $repo|; s/^repository-type:.*/repository-type: Git/; s/^default-extension:.*/default-extension: md/; s/^front-page:.*/front-page: README/" gitit.conf
+exec gitit -f gitit.conf
+'''
+
+[tasks."gitea:serve"]
+hide = true
+description = "Gitea on localhost:3000, data in .tilt-inputs/gitea"
+run = '''
+export PATH="$PATH"
+mkdir -p .tilt-inputs/gitea
+[ -f .tilt-inputs/gitea/app.ini ] || printf '[server]\nHTTP_ADDR = 127.0.0.1\nHTTP_PORT = 3000\nDISABLE_SSH = true\nROOT_URL = http://localhost:3000/\n[database]\nDB_TYPE = sqlite3\n' > .tilt-inputs/gitea/app.ini
+exec gitea web --work-path "$PWD/.tilt-inputs/gitea" --config "$PWD/.tilt-inputs/gitea/app.ini"
+'''
+
+[tasks."forgejo:serve"]
+hide = true
+description = "Forgejo on localhost:3001, data in .tilt-inputs/forgejo"
+run = '''
+export PATH="/opt/homebrew/bin:$PATH"
+mkdir -p .tilt-inputs/forgejo
+[ -f .tilt-inputs/forgejo/app.ini ] || printf '[server]\nHTTP_ADDR = 127.0.0.1\nHTTP_PORT = 3001\nDISABLE_SSH = true\nROOT_URL = http://localhost:3001/\n[database]\nDB_TYPE = sqlite3\n' > .tilt-inputs/forgejo/app.ini
+exec forgejo web --work-path "$PWD/.tilt-inputs/forgejo" --config "$PWD/.tilt-inputs/forgejo/app.ini"
+'''
+
+[tasks."leafwiki:serve"]
+hide = true
+description = "LeafWiki on localhost:8080"
+run = 'mkdir -p .scratch/leafwiki && exec leafwiki --host=127.0.0.1 --port=8080 --data-dir=.scratch/leafwiki --disable-auth --allow-insecure=true'
+
+[tasks."bridge:dev"]
+hide = true
+description = "Bridge on localhost, restarting on change"
+run = 'cd bridge && PORT="${BRIDGE_PORT:-$(fnox get BRIDGE_PORT 2>/dev/null || echo 8787)}" exec node --watch src/node.js'
+
+[tasks."bridge:tunnel"]
+hide = true
+description = "cloudflared quick tunnel to the local bridge"
+run = 'exec cloudflared tunnel --no-autoupdate --url "http://localhost:${BRIDGE_PORT:-$(fnox get BRIDGE_PORT 2>/dev/null || echo 8787)}"'
+
+[tasks."bridge:deploy"]
+hide = true
+description = "Test and deploy the bridge"
+run = "scripts/bridge-deploy.sh"
+
+[tasks."bridge:deploy-ci"]
+hide = true
+description = "Run the Bridge workflow on GitHub"
+run = "scripts/ci-run.sh bridge-deploy"
 
 [tasks.setup]
 hide = true

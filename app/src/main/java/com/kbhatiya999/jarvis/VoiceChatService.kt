@@ -10,7 +10,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
+import com.kbhatiya999.jarvis.core.JarvisLog
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 
@@ -37,7 +37,7 @@ class VoiceChatService : Service() {
             running = true
         } catch (e: Exception) {
             // Only possible from the background; the chat then simply stops hearing you when locked.
-            Log.w("JarvisVoice", "Cannot keep the mic in the background", e)
+            JarvisLog.w("Voice", "Cannot keep the mic in the background", e)
             stopSelf()
         }
         return START_NOT_STICKY

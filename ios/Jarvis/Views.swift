@@ -1,5 +1,6 @@
 import SwiftUI
 import JarvisCore
+import UniformTypeIdentifiers
 
 struct RootView: View {
     @EnvironmentObject var model: AppModel
@@ -99,6 +100,8 @@ struct ChatView: View {
                     NavigationLink("Active mode") { ActiveModeView() }
                     NavigationLink("Reminders") { RemindersView() }
                     NavigationLink(model.requests.isEmpty ? "Contacts" : "Contacts (\(model.requests.count) new)") { ContactsView() }
+                    NavigationLink("Connect Gemini") { GeminiView() }
+                    NavigationLink("Logs") { LogsView() }
                     Button("Change API key") { model.editingKey = true }
                     Button("Forget conversation", role: .destructive) { confirmForget = true }
                 }
@@ -319,5 +322,115 @@ struct ActiveModeView: View {
             cooldown = active.cooldownSeconds
             quiet = active.quietHours
         }
+    }
+}
+
+/// Settings › Logs: how much Jarvis logs, and sharing the log (e.g. by email) when something goes wrong.
+struct LogsView: View {
+    @State private var level = IOSLog.shared.setting()
+    @State private var bytes = IOSLog.shared.bytes()
+    @State private var shareURL: URL? = IOSLog.shared.shareFile()
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Level", selection: $level) {
+                    Text("Default (\(IOSLog.shared.releaseLevel().name.lowercased()))").tag(IOSLog.defaultSetting)
+                    Text("Errors only").tag("error")
+                    Text("Warnings").tag("warn")
+                    Text("Info").tag("info")
+                    Text("Debug (most detail)").tag("debug")
+                }
+                .onChange(of: level) { _, value in IOSLog.shared.setSetting(value) }
+            } footer: {
+                Text("Debug also keeps the first words of what you and Jarvis said. The log stays on this phone until you share it.")
+            }
+            Section {
+                Text("Log size: \(bytes / 1024) KB")
+                if let shareURL {
+                    ShareLink("Share log", item: shareURL)
+                } else {
+                    Text("Nothing logged yet.").foregroundStyle(.secondary)
+                }
+                Button("Clear", role: .destructive) {
+                    IOSLog.shared.clear()
+                    bytes = IOSLog.shared.bytes()
+                    shareURL = IOSLog.shared.shareFile()
+                }
+            }
+        }
+        .navigationTitle("Logs")
+        .onAppear {
+            bytes = IOSLog.shared.bytes()
+            shareURL = IOSLog.shared.shareFile()
+        }
+    }
+}
+
+/// Settings › Connect Gemini: the link to paste into the Gemini app (Connectors › + Custom), so Gemini can call
+/// tell_jarvis and Jarvis says the result. See shared GeminiBridge and bridge/ in the repo.
+struct GeminiView: View {
+    @EnvironmentObject var model: AppModel
+    @State private var version = 0
+    @State private var custom = ""
+    @State private var confirmNew = false
+    @State private var copied = false
+
+    private var bridge: GeminiBridge { model.jarvis.bridge }
+
+    var body: some View {
+        let _ = version
+        Form {
+            Section {
+                Text("Let the Gemini app talk through Jarvis. Gemini does the work, then calls \"tell_jarvis\" and Jarvis says the result, as a message from \"Gemini\".")
+                    .foregroundStyle(.secondary)
+            }
+            if bridge.baseUrl.isEmpty {
+                Section { Text("This build has no bridge address. Enter one below.").foregroundStyle(.orange) }
+            } else {
+                Section {
+                    Button(bridge.connected ? "Copy link" : "Make and copy link") { copy(bridge.link()) }
+                    if bridge.connected {
+                        Button("New link (turns the old one off)") { confirmNew = true }
+                        Button("Disconnect Gemini", role: .destructive) { bridge.disconnect(); version += 1 }
+                    }
+                    if copied { Text("Copied.").foregroundStyle(.secondary) }
+                } header: { Text("1. Your link") } footer: {
+                    Text("Anyone with this link can make your Jarvis speak (always as \"Gemini\"). Keep it to yourself.")
+                }
+                Section("2. Add it in Gemini") {
+                    Text("Gemini › Settings › Connectors › + Custom › paste the link as MCP Server URL › leave Client ID and secret empty › Next.")
+                }
+                Section("3. Tell Gemini when to use it (optional)") {
+                    Text(GeminiBridge.companion.GEM_INSTRUCTION).font(.footnote).foregroundStyle(.secondary)
+                    Button("Copy instruction") { UIPasteboard.general.string = GeminiBridge.companion.GEM_INSTRUCTION }
+                    Text("Try it: ask Gemini \"Tell my Jarvis hello\".")
+                }
+            }
+            Section {
+                TextField("https://…", text: $custom).textInputAutocapitalization(.never).autocorrectionDisabled()
+                Button("Save address") {
+                    bridge.customUrl = custom
+                    if bridge.connected { bridge.disconnect() }
+                    version += 1
+                }
+                .disabled(!(custom.isEmpty || custom.hasPrefix("https://")) || custom.trimmingCharacters(in: .whitespaces) == bridge.customUrl)
+            } header: { Text("Bridge address") } footer: {
+                Text("Empty uses the one this version came with. Changing it needs a new link.")
+            }
+        }
+        .navigationTitle("Connect Gemini")
+        .onAppear { custom = bridge.customUrl }
+        .alert("Make a new link?", isPresented: $confirmNew) {
+            Button("New link") { copy(bridge.doNewLink()) }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("The old link stops working at once; paste the new one into Gemini.") }
+    }
+
+    private func copy(_ link: String?) {
+        guard let link else { return }
+        UIPasteboard.general.setItems([[UTType.plainText.identifier: link]], options: [.expirationDate: Date().addingTimeInterval(600)])
+        copied = true
+        version += 1
     }
 }

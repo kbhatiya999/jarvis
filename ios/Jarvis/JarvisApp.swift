@@ -28,7 +28,10 @@ struct JarvisApp: App {
     private static let pollTask = "com.kbhatiya999.jarvis.relay-poll"
 
     init() {
+        IOSLog.shared.install()
         let jarvis = Jarvis.companion.setUp(platform: IOSPlatform())
+        jarvis.languageCode = IOSLog.languageCode
+        jarvis.bridge.defaultUrl = (Bundle.main.infoDictionary?["JarvisBridgeURL"] as? String) ?? ""
         let model = AppModel(jarvis: jarvis)
         _model = StateObject(wrappedValue: model)
         AppDelegate.onReply = { model.replyFromNotification() }
