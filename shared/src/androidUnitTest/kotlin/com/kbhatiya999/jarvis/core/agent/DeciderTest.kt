@@ -65,8 +65,10 @@ class DeciderTest {
 
         phone.answer = { job, _ -> assertEquals(DecisionJob.CHECKPOINT, job); Decision(speak = true, text = "Sir, is your gym bag packed?", why = "unknown") }
         phone.advanceTo(agent, at(agent.clock, "2026-11-18T12:00"))
-        assertEquals(1, phone.spoken.size)
-        assertTrue("Sir, is your gym bag packed?" in phone.spoken[0].prompt && "answer_condition" in phone.spoken[0].prompt)
+        val ask = phone.asks.single()
+        assertEquals(Delivery.SPOKE, ask.how, "a checkpoint asks out loud")
+        assertTrue("Sir, is your gym bag packed?" in ask.prompt && "answer_condition" in ask.prompt)
+        assertEquals(OpenQuestion.Kind.CONDITION, ask.question.kind)
     }
 
     @Test
@@ -78,7 +80,7 @@ class DeciderTest {
         agent.goals.draftPlan(g.id)
         assertIs<Goals.Result.Ok>(agent.goals.answer("gym", "bag", ok = true))
         phone.advanceTo(agent, at(agent.clock, "2026-11-18T12:00"))
-        assertTrue(phone.spoken.isEmpty(), "already confirmed: no model call, no speech")
+        assertTrue(phone.asks.isEmpty(), "already confirmed: no model call, no question")
         assertEquals(1, phone.asked.size)
 
         val g2 = (agent.goals.add("call the bank", "2026-11-18T17:00", Importance.IMPORTANT) as Goals.Result.Ok).goal
@@ -86,7 +88,7 @@ class DeciderTest {
         agent.goals.draftPlan(g2.id)
         phone.answer = { _, _ -> null } // the model fails
         phone.advanceTo(agent, at(agent.clock, "2026-11-18T13:00"))
-        assertTrue(phone.spoken.isEmpty() && phone.notifications.isEmpty(), "a failing model means silence, not a crash")
+        assertTrue(phone.asks.isEmpty() && phone.notifications.isEmpty(), "a failing model means silence, not a crash")
     }
 
     @Test

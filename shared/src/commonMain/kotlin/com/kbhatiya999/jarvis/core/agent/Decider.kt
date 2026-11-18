@@ -24,6 +24,8 @@ enum class DecisionJob {
     PLAN,
     /** A checkpoint came up: speak to the user now, or stay quiet? */
     CHECKPOINT,
+    /** A goal didn't happen, with the user's reason: suggest one check for next time (and maybe a note). */
+    REFLECT,
 }
 
 /** A condition the model proposes for a goal's plan, with when to check it ("12:00", the user's time). */
@@ -38,8 +40,10 @@ data class Decision(
     val text: String? = null,
     /** At most one question for the user. */
     val question: String? = null,
-    /** Proposed conditions (PLAN). */
+    /** Proposed conditions (PLAN), or the one check for next time (REFLECT; checkAt = minutes before the deadline). */
     val conditions: List<DraftCondition> = emptyList(),
+    /** REFLECT: a short general fact about the user worth remembering across goals ("tired after 5 pm"), if any. */
+    val note: String? = null,
     /** Why: always written to the journal. */
     val why: String,
 )
@@ -144,6 +148,7 @@ class GeminiDecider(private val apiKey: () -> String?) : Decider {
     private fun instructions(job: DecisionJob) = when (job) {
         DecisionJob.PLAN -> PLAN_INSTRUCTIONS
         DecisionJob.CHECKPOINT -> CHECKPOINT_INSTRUCTIONS
+        DecisionJob.REFLECT -> REFLECT_INSTRUCTIONS
     }
 
     companion object {
@@ -166,6 +171,16 @@ class GeminiDecider(private val apiKey: () -> String?) : Decider {
             "addressing the user as Sir, about this condition only. You may add at most one question in question. " +
             "Never nag or lecture. Always explain your choice in why."
 
+        const val REFLECT_INSTRUCTIONS = "You help a voice assistant, Jarvis, help its user succeed at goals. A goal " +
+            "just didn't happen, and you have the user's reason. Suggest at most ONE concrete check Jarvis could do " +
+            "before the deadline next time that removes this hurdle (e.g. reason \"forgot my gym clothes\" -> what " +
+            "\"gym bag packed and by the door\"). Put it in conditions[0]: what = the check, checkAt = how many minutes " +
+            "before the deadline to check it, as a number (e.g. \"360\" for six hours), reason = the hurdle. If the " +
+            "reason is a one-off (a sudden emergency, illness) or nothing Jarvis could check would help, return no " +
+            "conditions. Don't repeat a check the user already agreed to. If the reason reveals a general fact about " +
+            "the user that matters for other goals too (e.g. \"exhausted after work\"), put it in note, short, in the " +
+            "third person without names; otherwise leave note empty. Always explain in why."
+
         private val SCHEMA = RecordStore.json.parseToJsonElement("""
             {"type":"OBJECT","properties":{
               "speak":{"type":"BOOLEAN"},
@@ -174,6 +189,7 @@ class GeminiDecider(private val apiKey: () -> String?) : Decider {
               "conditions":{"type":"ARRAY","items":{"type":"OBJECT","properties":{
                 "what":{"type":"STRING"},"checkAt":{"type":"STRING"},"reason":{"type":"STRING"}},
                 "required":["what","checkAt"]}},
+              "note":{"type":"STRING"},
               "why":{"type":"STRING"}},
              "required":["why"]}
         """.trimIndent())

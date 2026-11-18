@@ -27,8 +27,8 @@ class Rules internal constructor(
         return Verdict(true, "decision ${d.thinks + 1} of $MAX_THINKS_PER_DAY today")
     }
 
-    /** May Jarvis speak up about [goalId] now (a nudge or check it decided on)? Counts it when allowed. */
-    fun nudge(goalId: String): Verdict {
+    /** May Jarvis speak up about [goalId] now (a nudge or check it decided on)? Counts it when allowed, unless [count] is false. */
+    fun nudge(goalId: String, count: Boolean = true): Verdict {
         val now = clock.now()
         if (isQuietHour(clock.hour(now))) return Verdict(false, "quiet hours")
         val d = today()
@@ -38,7 +38,7 @@ class Rules internal constructor(
         if (last != null && now - last < NUDGE_SPACING_MS) {
             return Verdict(false, "spoke up about it ${(now - last) / 60_000} min ago (needs ${NUDGE_SPACING_MS / 60_000})")
         }
-        save(d.copy(nudges = d.nudges + (goalId to times + now)))
+        if (count) save(d.copy(nudges = d.nudges + (goalId to times + now)))
         return Verdict(true, "nudge ${times.size + 1} of $MAX_NUDGES_PER_GOAL_PER_DAY today for this goal")
     }
 

@@ -25,6 +25,8 @@
         android:theme="@android:style/Theme.Material.NoActionBar">
         <!-- The agent (timed reminders): its alarms, and setting them again after a reboot, update or clock change. -->
         <receiver android:name=".AgentAlarmReceiver" android:exported="false" />
+        <!-- Answers from a question notification (Yes / No / Later, or a typed reason). -->
+        <receiver android:name=".QuestionReceiver" android:exported="false" />
         <receiver android:name=".AgentRearmReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

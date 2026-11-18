@@ -27,7 +27,12 @@ object AgentAndroid {
         val app = context.applicationContext
         agent.clock = PhoneClock
         agent.scheduler = AlarmScheduler(app)
-        agent.output = Output { ActiveModeService.speak(it) }
+        agent.output = object : Output {
+            override fun speak(outcome: com.kbhatiya999.jarvis.core.agent.Outcome.Speak) = ActiveModeService.speak(outcome)
+            override fun ask(question: com.kbhatiya999.jarvis.core.agent.OpenQuestion, prompt: String, spoken: Boolean) =
+                ActiveModeService.ask(app, question, prompt, spoken)
+            override fun dismiss(question: com.kbhatiya999.jarvis.core.agent.OpenQuestion) = QuestionNotifier.dismiss(app, question.id)
+        }
         if (!armed) {
             armed = true
             agent.rearm()

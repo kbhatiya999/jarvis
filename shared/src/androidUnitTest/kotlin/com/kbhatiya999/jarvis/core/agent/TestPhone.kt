@@ -11,6 +11,11 @@ internal class Phone {
     val alarms = mutableMapOf<String, Long>()
     val spoken = mutableListOf<Outcome.Speak>()
     var canSpeak = true
+    var inConversation = false
+    var notificationsOn = true
+    data class Ask(val question: OpenQuestion, val prompt: String, val how: Delivery)
+    val asks = mutableListOf<Ask>()
+    val dismissed = mutableListOf<String>()
 
     val platform = object : Platform {
         private val stores = mutableMapOf<String, MemStore>()
@@ -42,7 +47,20 @@ internal class Phone {
             override fun schedule(id: String, atMillis: Long, payload: String) { alarms[id] = atMillis }
             override fun cancel(id: String) { alarms.remove(id) }
         }
-        a.output = Output { if (canSpeak) { spoken += it; true } else false }
+        a.output = object : Output {
+            override fun speak(outcome: Outcome.Speak) = if (canSpeak) { spoken += outcome; true } else false
+            override fun ask(question: OpenQuestion, prompt: String, spoken: Boolean): Delivery {
+                val how = when {
+                    inConversation -> Delivery.JOINED_CONVERSATION
+                    spoken && canSpeak -> Delivery.SPOKE
+                    notificationsOn -> Delivery.NOTIFIED
+                    else -> Delivery.NOT_DELIVERED
+                }
+                if (how != Delivery.NOT_DELIVERED) asks += Ask(question, prompt, how)
+                return how
+            }
+            override fun dismiss(question: OpenQuestion) { dismissed += question.id }
+        }
     }
 
     /** Moves the clock to [t] and fires every alarm due by then, like Android would. */

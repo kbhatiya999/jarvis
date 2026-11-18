@@ -56,6 +56,15 @@ class Agent internal constructor(private val platform: Platform, internal val sc
     /** Goals: "make sure I go to the gym at 6". Plans and checkpoints build on these in the next steps. */
     val goals = Goals(this, platform.store("agent_goals")).also { features += it }
 
+    /** What Jarvis still needs to know, asked at good moments and retried until it no longer helps. */
+    val questions = Questions(this, platform.store("agent_questions")).also { features += it }
+
+    /** What got in the way of goals, and the checks the user agreed to for next time. */
+    val hurdles = Hurdles(this, platform.store("agent_hurdles"))
+
+    /** A good moment to ask an open question (the platform calls it). True if Jarvis asked one. Main thread. */
+    fun moment(kind: Moment, idleMs: Long = 0): Boolean = questions.moment(kind, idleMs)
+
     /** Short facts about the user shared by all goals (at most [Profile.MAX] lines), visible and editable. */
     val profile = Profile(platform.store("agent_profile")) { clock.now() }
 
@@ -237,9 +246,19 @@ interface Scheduler {
     fun cancel(id: String)
 }
 
-/** Speaks an [Outcome.Speak] (Android: active mode). False when it can't right now (off, a call, Do Not Disturb). */
-fun interface Output {
+/** How the agent reaches the user (Android: active mode, the chat, notifications). */
+interface Output {
+    /** Speaks [outcome]. False when it can't right now (active mode off, a call, Do Not Disturb). */
     fun speak(outcome: Outcome.Speak): Boolean
+
+    /**
+     * Asks [question]: joins a conversation that's going; else speaks [prompt] if [spoken] and possible; else a
+     * notification with answer buttons (and a reply box for a REASON). Returns how it got through.
+     */
+    fun ask(question: OpenQuestion, prompt: String, spoken: Boolean): Delivery
+
+    /** The question was answered or closed elsewhere: take down its notification, if any. */
+    fun dismiss(question: OpenQuestion) {}
 }
 
 /** Time in the user's own time zone (Android: java.time). */

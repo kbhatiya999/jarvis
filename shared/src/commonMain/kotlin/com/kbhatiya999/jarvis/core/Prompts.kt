@@ -57,6 +57,18 @@ object Prompts {
             "(once) and call skip_goal with their words; if they want more time, call move_goal. If they say nothing, " +
             "that's fine: end_conversation."
 
+    /** One open question about a goal: ask it, briefly, and record the answer with the right tool. */
+    fun askQuestion(question: String, goal: String, kind: String) =
+        "QUESTION about the user's goal \"$goal\". Ask it now, briefly and warmly, in character: \"$question\" Then " +
+            "listen. " + when (kind) {
+                "CONDITION" -> "If it's done or fine, call answer_condition with ok \"yes\"; if it's a problem, call it with " +
+                    "\"no\" and offer one short idea."
+                "OUTCOME" -> "If they did it, call goal_done. If not, ask once what got in the way, then call skip_goal with " +
+                    "their reason in their words."
+                "SUGGESTION" -> "If they agree, call accept_suggestion; if not, decline_suggestion. No pressure either way."
+                else -> "Call skip_goal with their reason in their words (\"didn't say\" if they'd rather not)."
+            } + " If they say to stop asking about it, call stop_asking. If they say nothing, that's fine: end_conversation."
+
     /** A checkpoint before a goal's deadline: say what the decider wrote, then listen for the answer. */
     fun goalCheck(goal: String, deadline: String, condition: String, text: String, question: String?) =
         "GOAL CHECK. The user's goal \"$goal\" is due $deadline. You're checking one thing they need first: " +

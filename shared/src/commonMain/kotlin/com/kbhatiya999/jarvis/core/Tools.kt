@@ -46,6 +46,10 @@ class Tools internal constructor(private val jarvis: Jarvis) {
                 "goal" to "The goal, as the user calls it or as listed.",
                 "reason" to "Why, in their words (\"it's raining\", \"too tired\"); \"didn't say\" if they won't say."),
             fn("list_goals", "The user's goals still going, with their times."),
+            fn("stop_asking", "The user wants no more questions about a goal (the goal stays set).",
+                "goal" to "The goal, as the user calls it or as listed."),
+            fn("accept_suggestion", "The user says yes to the check you suggested for next time."),
+            fn("decline_suggestion", "The user says no to the check you suggested for next time."),
             fn("answer_condition", "The user says something their goal needs is done or fine (\"bag's packed\"), or is a problem.",
                 "goal" to "The goal, as the user calls it or as listed.",
                 "condition" to "The condition, as listed or as the user puts it.",
@@ -83,8 +87,14 @@ class Tools internal constructor(private val jarvis: Jarvis) {
             "move_goal" -> reply(goal(jarvis.agent.goals.move(args.str("goal"), args.str("time")), "Moved"))
             "cancel_goal" -> reply(goal(jarvis.agent.goals.cancel(args.str("goal")), "Cancelled"))
             "goal_done" -> reply(goal(jarvis.agent.goals.done(args.str("goal")), "Marked done"))
-            "skip_goal" -> reply(goal(jarvis.agent.goals.skip(args.str("goal"), args.str("reason")), "Skipped this time"))
+            "skip_goal" -> skipGoal(args, reply)
+            "accept_suggestion" -> reply(jarvis.agent.hurdles.accept()?.let {
+                ok("Agreed: next time you'll check \"${it.suggestion}\" ${jarvis.agent.hurdles.describeBefore(it.minutesBefore)}. Confirm in a few words.")
+            } ?: error("There's no suggestion waiting for an answer."))
+            "decline_suggestion" -> reply(jarvis.agent.hurdles.decline()?.let { ok("Dropped. Acknowledge briefly, no pressure.") }
+                ?: error("There's no suggestion waiting for an answer."))
             "list_goals" -> reply(ok("Goals: ${jarvis.agent.goals.describeActive()}"))
+            "stop_asking" -> reply(goal(jarvis.agent.goals.stopAsking(args.str("goal")), "Won't ask about it again"))
             else -> reply(error("Unknown function $name"))
         }
     }
@@ -124,6 +134,25 @@ class Tools internal constructor(private val jarvis: Jarvis) {
     private fun timed(r: TimedReminders.Result, verb: String) = when (r) {
         is TimedReminders.Result.Ok -> ok("$verb: \"${r.reminder.text}\" at ${jarvis.agent.clock.describe(r.reminder.at)}.")
         is TimedReminders.Result.Error -> error(r.message)
+    }
+
+    /**
+     * Records the skip (a real reason is required), then reflects on it (a second or two) and hands Jarvis one
+     * suggestion for next time to offer; only the user's yes keeps it.
+     */
+    private fun skipGoal(args: JsonObject, reply: (JsonObject) -> Unit) {
+        val r = jarvis.agent.goals.skip(args.str("goal"), args.str("reason"))
+        if (r !is Goals.Result.Ok) return reply(goal(r, "Skipped this time"))
+        val reason = args.str("reason").trim()
+        if (reason.equals("didn't say", ignoreCase = true)) return reply(ok("Skipped this time. Acknowledge kindly, no pressure."))
+        jarvis.scope.launch {
+            val h = jarvis.agent.hurdles.reflect(r.goal, reason)
+            reply(ok(buildString {
+                append("Skipped this time; the reason is noted. Acknowledge kindly, without judgment. ")
+                if (h != null) append("Then offer, in one sentence: next time you could check \"${h.suggestion}\" " +
+                    "${jarvis.agent.hurdles.describeBefore(h.minutesBefore)}. If they agree, call accept_suggestion; if not, decline_suggestion.")
+            }))
+        }
     }
 
     /** Makes the goal, then drafts its plan (a few seconds) so Jarvis can tell the user how it'll help. */
