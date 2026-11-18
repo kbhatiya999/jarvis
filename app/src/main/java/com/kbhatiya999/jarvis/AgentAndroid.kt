@@ -63,6 +63,8 @@ object PhoneClock : AgentClock {
 
     override fun localDate(millis: Long): String = Instant.ofEpochMilli(millis).atZone(zone).toLocalDate().toString()
 
+    override fun dayOfWeek(millis: Long) = Instant.ofEpochMilli(millis).atZone(zone).dayOfWeek.value
+
     private fun String.lowercaseAmPm() = replace("AM", "am").replace("PM", "pm")
 }
 

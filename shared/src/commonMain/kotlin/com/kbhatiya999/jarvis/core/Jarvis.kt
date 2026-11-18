@@ -55,7 +55,7 @@ class Jarvis private constructor(val platform: Platform) {
         append(Prompts.PERSONA)
         append("\n\n").append(Prompts.context(reminders.items.value, contacts.contacts.value, contacts.myName.value, languages.codes.value))
         append("\n").append(Prompts.timedContext(agent.clock.nowForPrompt(), agent.timedReminders.describePending()))
-        append("\n").append(Prompts.goalsContext(agent.goals.describeActive()))
+        append("\n").append(Prompts.goalsContext(agent.goals.describeActive(), agent.goals.describeSeries()))
         if (extra != null) append("\n\n").append(extra)
         val memory = conversation.memoryText()
         if (memory.isNotEmpty()) append("\n\n").append(Prompts.MEMORY_INTRO).append('\n').append(memory)

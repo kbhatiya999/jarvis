@@ -89,6 +89,7 @@ class MainActivity : ComponentActivity() {
                         vm.screen == "check" -> CheckScreen(vm)
                         vm.screen == "gemini" -> GeminiScreen(vm)
                         vm.screen == "languages" -> LanguagesScreen(vm)
+                        vm.screen == "goals" -> GoalsScreen(vm)
                         else -> ChatScreen(vm)
                     }
                 }
@@ -204,6 +205,7 @@ private fun ChatScreen(vm: JarvisViewModel) {
                         text = { Text(if (requests.isEmpty()) "Contacts" else "Contacts (${requests.size} new)") },
                         onClick = { menu = false; vm.screen = "contacts" },
                     )
+                    DropdownMenuItem(text = { Text("Goals") }, onClick = { menu = false; vm.screen = "goals" })
                     DropdownMenuItem(text = { Text("Languages") }, onClick = { menu = false; vm.screen = "languages" })
                     DropdownMenuItem(text = { Text("Connect Gemini") }, onClick = { menu = false; vm.screen = "gemini" })
                     DropdownMenuItem(text = { Text("Self-check") }, onClick = { menu = false; vm.screen = "check" })

@@ -40,8 +40,9 @@ object Prompts {
             "and list_timed_reminders when they ask to change, drop or hear them. Confirm briefly with the day and time."
 
     /** The user's goals, and when a request is a goal rather than a plain timed reminder. */
-    fun goalsContext(active: String) =
-        "The user's goals (things you help make happen, not just remind about): $active. When they ask you to " +
+    fun goalsContext(active: String, repeating: String = "none") =
+        "The user's goals (things you help make happen, not just remind about): $active. Repeating goals: $repeating " +
+            "(use repeat_goal when they ask for one to repeat, stop_repeating to stop). When they ask you to " +
             "make sure something happens, or it's something people often fail to do (exercise, a deadline, a habit, " +
             "\"make sure I…\"), call make_goal instead of set_timed_reminder, and say you'll help make sure they get " +
             "there. If they say \"just remind me\", use set_timed_reminder. Ask whether it's important only if they " +
@@ -66,6 +67,7 @@ object Prompts {
                 "OUTCOME" -> "If they did it, call goal_done. If not, ask once what got in the way, then call skip_goal with " +
                     "their reason in their words."
                 "SUGGESTION" -> "If they agree, call accept_suggestion; if not, decline_suggestion. No pressure either way."
+                "REPEAT" -> "If they agree, call repeat_goal with the days and time offered (they may change them). No pressure."
                 else -> "Call skip_goal with their reason in their words (\"didn't say\" if they'd rather not)."
             } + " If they say to stop asking about it, call stop_asking. If they say nothing, that's fine: end_conversation."
 

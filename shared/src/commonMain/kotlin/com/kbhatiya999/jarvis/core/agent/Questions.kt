@@ -15,6 +15,9 @@ data class OpenQuestion(
     val conditionId: String? = null,
     /** For SUGGESTION: which hurdle's suggestion. */
     val hurdleId: String? = null,
+    /** For REPEAT: the days (ISO 1–7) and time offered. */
+    val repeatDays: List<Int>? = null,
+    val repeatTime: String? = null,
     /** The question, written to be asked ("Is your gym bag packed, Sir?"). */
     val text: String,
     val important: Boolean = false,
@@ -38,6 +41,8 @@ data class OpenQuestion(
         REASON,
         /** After a reason: shall Jarvis check this next time? */
         SUGGESTION,
+        /** After enough successes: shall it repeat on these days? */
+        REPEAT,
     }
 
     @Serializable
@@ -67,18 +72,22 @@ class Questions internal constructor(private val agent: Agent, store: KeyValueSt
     // ------------------------------------------------------------------ creating and closing
 
     /** Opens a question (replacing an open one of the same kind for the same goal/condition) and tries it at [firstTryAt]. */
-    internal fun open(goal: Goal, kind: OpenQuestion.Kind, text: String, expiresAt: Long, firstTryAt: Long?, conditionId: String? = null, hurdleId: String? = null): OpenQuestion {
+    internal fun open(
+        goal: Goal, kind: OpenQuestion.Kind, text: String, expiresAt: Long, firstTryAt: Long?,
+        conditionId: String? = null, hurdleId: String? = null, repeatDays: List<Int>? = null, repeatTime: String? = null,
+    ): OpenQuestion {
         val important = goal.importance == Importance.IMPORTANT
         val max = when (kind) {
             OpenQuestion.Kind.OUTCOME -> if (important) 3 else 2
-            OpenQuestion.Kind.REASON, OpenQuestion.Kind.SUGGESTION -> 2
+            OpenQuestion.Kind.REASON, OpenQuestion.Kind.SUGGESTION, OpenQuestion.Kind.REPEAT -> 2
             OpenQuestion.Kind.CONDITION -> if (important) 3 else 1
         }
         items.value.filter { it.status == OpenQuestion.Status.OPEN && it.goalId == goal.id && it.kind == kind && it.conditionId == conditionId }
             .forEach { close(it, OpenQuestion.Status.STOPPED, null) }
         val q = OpenQuestion(
             id = "q" + agent.now.toString(36) + (0..2).map { "abcdefghijklmnopqrstuvwxyz0123456789".random() }.joinToString(""),
-            goalId = goal.id, kind = kind, conditionId = conditionId, hurdleId = hurdleId, text = text.trim(), important = important,
+            goalId = goal.id, kind = kind, conditionId = conditionId, hurdleId = hurdleId, repeatDays = repeatDays, repeatTime = repeatTime,
+            text = text.trim(), important = important,
             createdAt = agent.now, expiresAt = expiresAt, maxTries = max, nextTryAt = firstTryAt,
         )
         save(items.value + q)
@@ -103,8 +112,13 @@ class Questions internal constructor(private val agent: Agent, store: KeyValueSt
     /** The goal is finished or cancelled, or the user said "stop asking": nothing more to ask about it. */
     internal fun stop(goalId: String, why: String? = null) {
         // A suggestion outlives its goal (it's about next time), so it isn't stopped with it.
-        items.value.filter { it.status == OpenQuestion.Status.OPEN && it.goalId == goalId && it.kind != OpenQuestion.Kind.SUGGESTION }
+        items.value.filter { it.status == OpenQuestion.Status.OPEN && it.goalId == goalId && it.kind != OpenQuestion.Kind.SUGGESTION && it.kind != OpenQuestion.Kind.REPEAT }
             .forEach { close(it, OpenQuestion.Status.STOPPED, why) }
+    }
+
+    /** "Stop asking" on the goals screen. */
+    fun stopQuestion(id: String) {
+        items.value.firstOrNull { it.id == id && it.status == OpenQuestion.Status.OPEN }?.let { close(it, OpenQuestion.Status.STOPPED, "stopped on the goals screen") }
     }
 
     fun open(): List<OpenQuestion> {
@@ -194,6 +208,10 @@ class Questions internal constructor(private val agent: Agent, store: KeyValueSt
                 OpenQuestion.Kind.CONDITION -> agent.goals.answerById(goal.id, q.conditionId, ok = true)
                 OpenQuestion.Kind.OUTCOME -> agent.goals.doneById(goal.id)
                 OpenQuestion.Kind.SUGGESTION -> agent.hurdles.accept(q.hurdleId)
+                OpenQuestion.Kind.REPEAT -> {
+                    close(q, OpenQuestion.Status.ANSWERED, null)
+                    agent.goals.repeat(goal.what, q.repeatDays.orEmpty(), q.repeatTime.orEmpty())
+                }
                 OpenQuestion.Kind.REASON -> Unit
             }
             Answer.NO -> when (q.kind) {
@@ -206,6 +224,10 @@ class Questions internal constructor(private val agent: Agent, store: KeyValueSt
                     update(r.copy(tries = 1, lastAskedAt = agent.now))
                 }
                 OpenQuestion.Kind.SUGGESTION -> agent.hurdles.decline(q.hurdleId)
+                OpenQuestion.Kind.REPEAT -> {
+                    close(q, OpenQuestion.Status.ANSWERED, null)
+                    agent.decision("You'd rather not repeat \"${goal.what}\"; I'll keep it one at a time.")
+                }
                 OpenQuestion.Kind.REASON -> Unit
             }
             Answer.TEXT -> if (q.kind == OpenQuestion.Kind.REASON && !text.isNullOrBlank()) agent.goals.skipById(goal.id, text.trim())

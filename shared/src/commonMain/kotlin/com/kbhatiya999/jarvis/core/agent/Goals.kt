@@ -15,8 +15,12 @@ class Goals internal constructor(private val agent: Agent, store: KeyValueStore)
     private val goalStore = RecordStore(store, "goals", Goal.serializer(), version = 1)
     private val attemptStore = RecordStore(store, "attempts", Attempt.serializer(), version = 1)
 
+    private val seriesStore = RecordStore(store, "series", Series.serializer(), version = 1)
+    private val kv = store
+
     val items = Watchable(goalStore.load())
     val attempts = Watchable(attemptStore.load())
+    val series = Watchable(seriesStore.load())
 
     override val name = "goals"
 
@@ -25,14 +29,14 @@ class Goals internal constructor(private val agent: Agent, store: KeyValueStore)
         data class Error(val message: String) : Result
     }
 
-    fun add(what: String, deadlineLocal: String, importance: Importance, success: String = ""): Result {
+    fun add(what: String, deadlineLocal: String, importance: Importance, success: String = "", seriesId: String? = null): Result {
         val w = what.trim()
         if (w.isEmpty()) return Result.Error("What's the goal?")
         val at = agent.clock.parseLocal(deadlineLocal) ?: return Result.Error("I couldn't read the time \"$deadlineLocal\"; use 2026-11-18T18:00.")
         if (at <= agent.now) return Result.Error("${agent.clock.describe(at)} has already passed.")
         if (active().size >= MAX_ACTIVE) return Result.Error("You already have $MAX_ACTIVE goals going; finish or cancel one first.")
         val g = Goal(id = newId(), what = w.take(MAX_TEXT), deadline = at, importance = importance,
-            success = success.trim().take(MAX_TEXT), createdAt = agent.now)
+            success = success.trim().take(MAX_TEXT), createdAt = agent.now, seriesId = seriesId)
         save(items.value + g)
         agent.schedule(deadlineTimer(g.id), at)
         agent.journal("goal made: ${g.id} \"${g.what}\" by ${agent.clock.describe(at)} (${importance.name.lowercase()})")
@@ -125,6 +129,106 @@ class Goals internal constructor(private val agent: Agent, store: KeyValueStore)
         return Result.Ok(updated)
     }
 
+    // ------------------------------------------------------------------ repeating goals
+
+    /**
+     * Repeats [what] on [days] at [time] ("18:00"). The goal matching [what], if one is open, becomes the first
+     * occurrence; otherwise the next matching day gets one. Each occurrence gets its own plan.
+     */
+    fun repeat(what: String, days: List<Int>, time: String): Result {
+        val d = days.filter { it in 1..7 }.distinct().sorted()
+        if (d.isEmpty()) return Result.Error("Which days? e.g. mon,wed,fri, weekdays or every day.")
+        if (!Regex("^\\d{1,2}:\\d{2}$").matches(time.trim())) return Result.Error("Which time? e.g. 18:00.")
+        val t = time.trim().padStart(5, '0')
+        val existing = find(what)
+        val name = existing?.what ?: what.trim().ifEmpty { return Result.Error("What should repeat?") }
+        // One series per goal: a new one replaces an old one of the same name.
+        series.value.filter { it.active && it.what.equals(name, ignoreCase = true) }.forEach { stopSeries(it, "replaced") }
+        val s = Series(id = "s" + newId(), what = name, time = t, days = d, importance = existing?.importance ?: Importance.NICE, createdAt = agent.now)
+        saveSeries(series.value + s)
+        if (existing != null && existing.status == GoalStatus.ACTIVE) update(existing.copy(seriesId = s.id))
+        val first = if (existing != null && existing.status == GoalStatus.ACTIVE) existing else nextOccurrence(s)
+        agent.decision("Repeating \"$name\" ${describeDays(d)} at $t." + (first?.let { " Next: ${agent.clock.describe(it.deadline)}." } ?: ""))
+        return first?.let { Result.Ok(it) } ?: Result.Error("Repeating set, but I couldn't find the next day.")
+    }
+
+    /** Stops [what] repeating; upcoming occurrences are cancelled. */
+    fun stopRepeating(what: String): Result {
+        val w = what.trim().lowercase()
+        val s = series.value.filter { it.active }.firstOrNull { it.what.lowercase() == w || it.what.lowercase().contains(w) || w.contains(it.what.lowercase()) }
+            ?: return Result.Error("Nothing repeats like \"$what\". Repeating: ${describeSeries()}.")
+        stopSeries(s, "you asked")
+        agent.decision("Stopped repeating \"${s.what}\".")
+        return Result.Ok(Goal(id = s.id, what = s.what, deadline = agent.now))
+    }
+
+    fun describeSeries(): String = series.value.filter { it.active }.joinToString("; ") { "\"${it.what}\" ${describeDays(it.days)} at ${it.time}" }.ifEmpty { "none" }
+
+    /** The next occurrence of [s] after now (if none is open yet), with a plan drafted in the background. */
+    private fun nextOccurrence(s: Series): Goal? {
+        items.value.firstOrNull { it.seriesId == s.id && it.status == GoalStatus.ACTIVE }?.let { return it }
+        val now = agent.now
+        for (i in 0..7) {
+            val day = now + i * 86_400_000L
+            if (agent.clock.dayOfWeek(day) !in s.days) continue
+            val at = agent.clock.parseLocal("${agent.clock.localDate(day)}T${s.time}") ?: continue
+            if (at <= now + MIN_LEAD_MS) continue
+            val r = add(s.what, "${agent.clock.localDate(day)}T${s.time}", s.importance, seriesId = s.id)
+            if (r is Result.Ok) {
+                agent.scope.launch { draftPlan(r.goal.id) }
+                return r.goal
+            }
+            return null
+        }
+        return null
+    }
+
+    private fun stopSeries(s: Series, why: String) {
+        saveSeries(series.value.map { if (it.id == s.id) it.copy(active = false) else it })
+        items.value.filter { it.seriesId == s.id && it.status == GoalStatus.ACTIVE && it.deadline > agent.now }
+            .forEach { finish(it, GoalStatus.CANCELLED, null, null) }
+        agent.journal("series ${s.id} stopped ($why)")
+    }
+
+    private fun saveSeries(list: List<Series>) {
+        val (on, off) = list.partition { it.active }
+        val kept = on + off.takeLast(20)
+        series.value = kept
+        seriesStore.save(kept)
+    }
+
+    /** An offer to repeat, after enough successes. */
+    data class RepeatOffer(val goal: Goal, val days: List<Int>, val time: String, val successes: Int) {
+        val daysText get() = describeDays(days)
+    }
+
+    /**
+     * Gradual, as agreed: after [REPEAT_AFTER] successes at similar goals within 14 days, if nothing like it repeats
+     * yet and no offer was made in the last week, offer to repeat on the days those successes fell on.
+     */
+    fun repeatOffer(g: Goal): RepeatOffer? {
+        if (g.seriesId != null) return null
+        val words = significant(g.what)
+        if (series.value.any { it.active && significant(it.what).any { w -> w in words } }) return null
+        val now = agent.now
+        val lastOffer = kv.get(REPEAT_OFFERED)?.toLongOrNull() ?: 0L
+        if (now - lastOffer < REPEAT_OFFER_SPACING_MS) return null
+        val similar = items.value.filter { significant(it.what).any { w -> w in words } }.associateBy { it.id }
+        val wins = attempts.value.filter { it.outcome == Attempt.Outcome.DONE && it.goalId in similar && now - it.at <= 14 * 86_400_000L }
+        if (wins.size < REPEAT_AFTER) return null
+        val days = wins.mapNotNull { similar[it.goalId]?.deadline }.map { agent.clock.dayOfWeek(it) }.distinct().sorted()
+        val time = hhmm(g.deadline)
+        kv.set(REPEAT_OFFERED, now.toString())
+        agent.journal("offering to repeat \"${g.what}\" ${describeDays(days)} at $time (${wins.size} successes in 14 days)")
+        return RepeatOffer(g, days, time, wins.size)
+    }
+
+    private fun hhmm(millis: Long): String {
+        val h = agent.clock.hour(millis)
+        val m = ((millis - (agent.clock.parseLocal("${agent.clock.localDate(millis)}T${h.toString().padStart(2, '0')}:00") ?: millis)) / 60_000L).toInt().coerceIn(0, 59)
+        return "${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}"
+    }
+
     /** "Stop asking me about this": no more questions about the goal (it stays set). */
     fun stopAsking(what: String): Result {
         val g = find(what) ?: return notFound(what)
@@ -140,7 +244,21 @@ class Goals internal constructor(private val agent: Agent, store: KeyValueStore)
         answer(g.what, c.what, ok)
     }
 
-    internal fun doneById(goalId: String) = items.value.firstOrNull { it.id == goalId }?.let { finish(it, GoalStatus.DONE, Attempt.Outcome.DONE, null) }
+    // For the goals screen (exact ids, no matching by name).
+    fun markDone(goalId: String) = doneById(goalId)
+    fun cancelById(goalId: String) { items.value.firstOrNull { it.id == goalId }?.let { finish(it, GoalStatus.CANCELLED, null, null) } }
+    fun stopSeriesById(seriesId: String) { series.value.firstOrNull { it.id == seriesId && it.active }?.let { stopSeries(it, "stopped on the goals screen") } }
+
+    /** From a notification "Yes": done, and maybe an offer to repeat, as a Yes / No question. */
+    internal fun doneById(goalId: String) {
+        val g = items.value.firstOrNull { it.id == goalId } ?: return
+        finish(g, GoalStatus.DONE, Attempt.Outcome.DONE, null)
+        val offer = repeatOffer(g) ?: return
+        val q = agent.questions.open(g, OpenQuestion.Kind.REPEAT,
+            "That's ${offer.successes} times in two weeks. Shall I set \"${g.what}\" ${offer.daysText} at ${offer.time}?",
+            expiresAt = agent.now + SUGGESTION_TTL_MS, firstTryAt = null, repeatDays = offer.days, repeatTime = offer.time)
+        agent.questions.askNow(q, spoken = false, how = "after a success")
+    }
 
     /** From a notification reply: record the skip, then reflect and offer a suggestion as a Yes / No question. */
     internal fun skipById(goalId: String, reason: String) {
@@ -177,6 +295,7 @@ class Goals internal constructor(private val agent: Agent, store: KeyValueStore)
         }
         attemptStore.save(attempts.value)
         save(items.value.map { g -> if (stale.any { it.id == g.id }) g.copy(status = GoalStatus.SKIPPED) else g })
+        stale.mapNotNull { it.seriesId }.distinct().forEach { sid -> series.value.firstOrNull { it.id == sid && it.active }?.let { nextOccurrence(it) } }
     }
 
     fun describeActive(): String = active().joinToString("; ") {
@@ -294,6 +413,7 @@ class Goals internal constructor(private val agent: Agent, store: KeyValueStore)
             attemptStore.save(attempts.value)
         }
         agent.journal("goal ${status.name.lowercase()}: ${g.id} \"${g.what}\"" + (reason?.let { " (\"$it\")" } ?: ""))
+        g.seriesId?.let { sid -> series.value.firstOrNull { it.id == sid && it.active }?.let { nextOccurrence(it) } }
         return Result.Ok(finished)
     }
 
@@ -342,6 +462,33 @@ class Goals internal constructor(private val agent: Agent, store: KeyValueStore)
         const val OUTCOME_FIRST_TRY_MS = 30 * 60_000L
         /** A suggestion for next time stays open this long. */
         const val SUGGESTION_TTL_MS = 24 * 60 * 60_000L
+        /** Successes at similar goals (within 14 days) before Jarvis offers to repeat. */
+        const val REPEAT_AFTER = 3
+        /** At most one repeat offer a week. */
+        const val REPEAT_OFFER_SPACING_MS = 7 * 86_400_000L
+        private const val REPEAT_OFFERED = "repeat_offered_at"
+        /** A new occurrence is never made less than this far ahead. */
+        private const val MIN_LEAD_MS = 5 * 60_000L
+
+        private val DAY_NAMES = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+        fun describeDays(days: List<Int>): String = when (days.sorted()) {
+            (1..7).toList() -> "every day"
+            (1..5).toList() -> "on weekdays"
+            listOf(6, 7) -> "on weekends"
+            else -> "on " + days.sorted().joinToString(", ") { DAY_NAMES[it - 1] }
+        }
+
+        /** "mon,wed,fri", "weekdays", "every day", "weekends", "tuesday and thursday" → ISO days. */
+        fun parseDays(text: String): List<Int> {
+            val t = text.lowercase()
+            return when {
+                "every" in t || "daily" in t || "all" in t -> (1..7).toList()
+                "weekday" in t -> (1..5).toList()
+                "weekend" in t -> listOf(6, 7)
+                else -> listOf("mon", "tue", "wed", "thu", "fri", "sat", "sun").mapIndexedNotNull { i, d -> if (Regex("\\b$d").containsMatchIn(t)) i + 1 else null }
+            }
+        }
 
         /** "I can't", "not today", "no", "I won't go out today"…: whether, not why. */
         private val NOT_A_REASON = Regex(

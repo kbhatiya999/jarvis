@@ -66,6 +66,14 @@ class Hurdles internal constructor(private val agent: Agent, store: KeyValueStor
 
     fun decline(id: String? = null): Hurdle? = answer(id, Hurdle.Status.DECLINED)
 
+    /** "Remove" on the goals screen: Jarvis stops using this check. */
+    fun remove(id: String) {
+        val h = items.value.firstOrNull { it.id == id } ?: return
+        save(items.value.map { if (it.id == id) it.copy(status = Hurdle.Status.DECLINED) else it })
+        agent.questions.answeredHurdle(h.id)
+        agent.decision("Removed the check \"${h.suggestion}\"; I won't use it in plans any more.")
+    }
+
     /** Accepted checks for goals like [what] (sharing a meaningful word), newest first. */
     fun acceptedFor(what: String): List<Hurdle> {
         val words = Goals.significant(what)

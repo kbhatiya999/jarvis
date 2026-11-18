@@ -30,6 +30,22 @@ data class Goal(
     val conditions: List<Condition> = emptyList(),
     val notes: List<Note> = emptyList(),
     val createdAt: Long = 0,
+    /** The repeating goal this is one occurrence of, if any. */
+    val seriesId: String? = null,
+)
+
+/** A goal that repeats on set days at a set time ("gym Mon, Wed, Fri at 18:00"); each day gets its own [Goal]. */
+@Serializable
+data class Series(
+    val id: String,
+    val what: String,
+    /** "18:00", the user's time. */
+    val time: String,
+    /** ISO days of the week: 1 = Monday … 7 = Sunday. */
+    val days: List<Int>,
+    val importance: Importance = Importance.NICE,
+    val active: Boolean = true,
+    val createdAt: Long = 0,
 )
 
 @Serializable

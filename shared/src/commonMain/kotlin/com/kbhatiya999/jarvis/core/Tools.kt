@@ -48,6 +48,12 @@ class Tools internal constructor(private val jarvis: Jarvis) {
             fn("list_goals", "The user's goals still going, with their times."),
             fn("stop_asking", "The user wants no more questions about a goal (the goal stays set).",
                 "goal" to "The goal, as the user calls it or as listed."),
+            fn("repeat_goal", "Make a goal repeat on set days at a set time (each day gets its own plan and checks).",
+                "goal" to "The goal, as the user calls it or as listed.",
+                "days" to "Which days: e.g. \"mon,wed,fri\", \"weekdays\", \"weekends\" or \"every day\".",
+                "time" to "The time, local, as HH:MM, e.g. \"18:00\"."),
+            fn("stop_repeating", "Stop a goal repeating (upcoming ones are cancelled).",
+                "goal" to "The repeating goal, as the user calls it or as listed."),
             fn("accept_suggestion", "The user says yes to the check you suggested for next time."),
             fn("decline_suggestion", "The user says no to the check you suggested for next time."),
             fn("answer_condition", "The user says something their goal needs is done or fine (\"bag's packed\"), or is a problem.",
@@ -86,7 +92,9 @@ class Tools internal constructor(private val jarvis: Jarvis) {
                 !args.str("ok").trim().lowercase().startsWith("n")), "Noted"))
             "move_goal" -> reply(goal(jarvis.agent.goals.move(args.str("goal"), args.str("time")), "Moved"))
             "cancel_goal" -> reply(goal(jarvis.agent.goals.cancel(args.str("goal")), "Cancelled"))
-            "goal_done" -> reply(goal(jarvis.agent.goals.done(args.str("goal")), "Marked done"))
+            "goal_done" -> goalDone(args, reply)
+            "repeat_goal" -> reply(goal(jarvis.agent.goals.repeat(args.str("goal"), Goals.parseDays(args.str("days")), args.str("time")), "Repeating; next one"))
+            "stop_repeating" -> reply(goal(jarvis.agent.goals.stopRepeating(args.str("goal")), "Stopped repeating"))
             "skip_goal" -> skipGoal(args, reply)
             "accept_suggestion" -> reply(jarvis.agent.hurdles.accept()?.let {
                 ok("Agreed: next time you'll check \"${it.suggestion}\" ${jarvis.agent.hurdles.describeBefore(it.minutesBefore)}. Confirm in a few words.")
@@ -136,6 +144,19 @@ class Tools internal constructor(private val jarvis: Jarvis) {
         is TimedReminders.Result.Error -> error(r.message)
     }
 
+    /** Marks it done; after enough successes, hands Jarvis a gentle offer to repeat it. */
+    private fun goalDone(args: JsonObject, reply: (JsonObject) -> Unit) {
+        val r = jarvis.agent.goals.done(args.str("goal"))
+        if (r !is Goals.Result.Ok) return reply(goal(r, "Marked done"))
+        val offer = jarvis.agent.goals.repeatOffer(r.goal)
+        reply(ok(buildString {
+            append("Marked done. Congratulate briefly and warmly. ")
+            if (offer != null) append("Then, gently and only once: they've done this ${offer.successes} times in two weeks; offer to " +
+                "set \"${r.goal.what}\" ${offer.daysText} at ${offer.time} so they don't have to ask each time. If they agree, call " +
+                "repeat_goal with those days and time (or theirs). If not, that's fine.")
+        }))
+    }
+
     /**
      * Records the skip (a real reason is required), then reflects on it (a second or two) and hands Jarvis one
      * suggestion for next time to offer; only the user's yes keeps it.
@@ -148,7 +169,8 @@ class Tools internal constructor(private val jarvis: Jarvis) {
         jarvis.scope.launch {
             val h = jarvis.agent.hurdles.reflect(r.goal, reason)
             reply(ok(buildString {
-                append("Skipped this time; the reason is noted. Acknowledge kindly, without judgment. ")
+                append("Skipped this time; the reason is noted. Acknowledge kindly, without judgment. You may offer, once, to " +
+                    "try again tomorrow at the same time (make_goal) if that fits. ")
                 if (h != null) append("Then offer, in one sentence: next time you could check \"${h.suggestion}\" " +
                     "${jarvis.agent.hurdles.describeBefore(h.minutesBefore)}. If they agree, call accept_suggestion; if not, decline_suggestion.")
             }))

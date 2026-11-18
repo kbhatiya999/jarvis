@@ -279,6 +279,9 @@ interface AgentClock {
 
     /** The user's local date, "2026-11-18" (daily limits reset on it). */
     fun localDate(millis: Long): String
+
+    /** ISO day of the week in the user's time zone: 1 = Monday … 7 = Sunday. */
+    fun dayOfWeek(millis: Long): Int
 }
 
 /** A clock in UTC: tests and platforms that don't provide their own. */
@@ -306,6 +309,9 @@ class UtcClock(private val nowMillis: () -> Long) : AgentClock {
     override fun hour(millis: Long) = (millis.mod(86_400_000L) / 3_600_000L).toInt()
 
     override fun localDate(millis: Long) = describe(millis).substringBefore(' ')
+
+    // 1970-01-01 was a Thursday (4).
+    override fun dayOfWeek(millis: Long) = ((millis.floorDiv(86_400_000L) + 3).mod(7L) + 1).toInt()
 
     // Howard Hinnant's civil date algorithms (proleptic Gregorian).
     private fun daysFromCivil(y0: Int, m: Int, d: Int): Long {
