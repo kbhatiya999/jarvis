@@ -53,7 +53,8 @@ class WakeListener(
             running = false
             return
         }
-        val recognizer = Recognizer(model, MicHub.RATE.toFloat(), GRAMMAR)
+        // Word confidences in final results: the bare name must be heard clearly before it interrupts Jarvis.
+        val recognizer = Recognizer(model, MicHub.RATE.toFloat(), GRAMMAR).apply { setWords(true) }
         MicHub.add(mic, echoCancel = false)
         val preRoll = ArrayDeque<ByteArray>()
         var preRollBytes = 0
@@ -74,7 +75,7 @@ class WakeListener(
                 if (now - lastSound > TAIL_MS) {
                     if (decoding) {
                         // Quiet again: finish this utterance and idle.
-                        check(JSONObject(recognizer.finalResult).optString("text"), fired)
+                        checkFinal(JSONObject(recognizer.finalResult), fired)
                         recognizer.reset()
                         fired = mutableSetOf()
                         decoding = false
@@ -92,7 +93,7 @@ class WakeListener(
                     preRollBytes = 0
                 }
                 if (recognizer.acceptWaveForm(chunk, chunk.size)) {
-                    check(JSONObject(recognizer.result).optString("text"), fired)
+                    checkFinal(JSONObject(recognizer.result), fired)
                     fired = mutableSetOf()
                 } else if (check(JSONObject(recognizer.partialResult).optString("partial"), fired)) {
                     // A command fired: start fresh so it can't fire twice.
@@ -107,17 +108,46 @@ class WakeListener(
         }
     }
 
-    /** Fires what [text] contains (once per utterance). True when a command (not just the name) fired. */
+    /**
+     * Commands ("Jarvis wake up", "Jarvis power down") fire on the early guess, as soon as the whole phrase is in it:
+     * three words are hard to hear by mistake. True when one fired.
+     */
     private fun check(text: String, fired: MutableSet<String>): Boolean {
-        val t = " ${text.replace("[unk]", " ").trim().replace(Regex("\\s+"), " ")} "
+        val t = normalize(text)
         if (" jarvis " !in t) return false
-        if ("name" !in fired) { fired += "name"; JarvisLog.d(TAG, "heard: Jarvis"); onName() }
-        return when {
-            " jarvis power down " in t -> { JarvisLog.i(TAG, "heard: Jarvis power down"); onPowerDown(); true }
-            " jarvis wake up " in t -> { JarvisLog.i(TAG, "heard: Jarvis wake up"); onWake(); true }
-            else -> false
+        val command = when {
+            " jarvis power down " in t -> "power down"
+            " jarvis wake up " in t -> "wake up"
+            else -> return false // the bare name waits for the finished result (checkFinal)
+        }
+        if ("name" !in fired) { fired += "name"; onName() }
+        JarvisLog.i(TAG, "heard: Jarvis $command")
+        if (command == "power down") onPowerDown() else onWake()
+        return true
+    }
+
+    /**
+     * A finished result. Commands as in [check]; the bare name only interrupts when the engine is sure of it.
+     * With a four-phrase vocabulary early guesses lean towards "jarvis" for anything similar, including Jarvis's
+     * own voice leaking past echo cancellation, so the name needs a finished result and a high confidence.
+     */
+    private fun checkFinal(result: JSONObject, fired: MutableSet<String>) {
+        val text = result.optString("text")
+        if (check(text, fired)) return
+        if (" jarvis " !in normalize(text) || "name" in fired) return
+        val words = result.optJSONArray("result")
+        val conf = (0 until (words?.length() ?: 0)).map { words!!.getJSONObject(it) }
+            .filter { it.optString("word") == "jarvis" }.maxOfOrNull { it.optDouble("conf", 0.0) } ?: 0.0
+        if (conf >= NAME_MIN_CONF) {
+            fired += "name"
+            JarvisLog.i(TAG, "heard: Jarvis (confidence ${String.format(java.util.Locale.US, "%.2f", conf)})")
+            onName()
+        } else {
+            JarvisLog.i(TAG, "ignored an unclear \"Jarvis\" (confidence ${String.format(java.util.Locale.US, "%.2f", conf)}, needs $NAME_MIN_CONF)")
         }
     }
+
+    private fun normalize(text: String) = " ${text.replace("[unk]", " ").trim().replace(Regex("\\s+"), " ")} "
 
     /** The offline speech model (Vosk small English, about 40 MB), downloaded once when the feature is turned on. */
     object Models {
@@ -173,6 +203,8 @@ class WakeListener(
         const val TAG = "Wake"
         // Only these can be recognised; everything else comes out as [unk].
         const val GRAMMAR = """["jarvis wake up", "jarvis power down", "jarvis", "[unk]"]"""
+        /** How sure the engine must be of a bare "Jarvis" before it interrupts (0..1); tune from logged values. */
+        const val NAME_MIN_CONF = 0.85
         const val MIN_SOUND_RMS = 150.0 // a quiet room is well below this
         const val ABOVE_FLOOR = 2.5 // how far above the background noise counts as sound
         const val TAIL_MS = 1_200L // keep decoding this long after the last sound
