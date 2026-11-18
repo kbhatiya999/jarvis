@@ -26,7 +26,18 @@ internal class Phone {
     }
 
     /** A fresh agent on the same saved data, as after the app restarts. */
-    fun agent() = Agent(platform).also { a ->
+    /** What the fake model answers, per job; null = it fails. */
+    var answer: (DecisionJob, String) -> Decision? = { _, _ -> Decision(why = "fake: nothing to say") }
+    val asked = mutableListOf<Pair<DecisionJob, String>>()
+
+    // Unconfined: coroutines run right away on the test thread, so a wake-up finishes before the next line.
+    fun agent() = Agent(platform, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined)).also { a ->
+        a.decider = object : Decider {
+            override suspend fun decide(job: DecisionJob, context: String): Decision {
+                asked += job to context
+                return answer(job, context) ?: error("fake model failure")
+            }
+        }
         a.scheduler = object : Scheduler {
             override fun schedule(id: String, atMillis: Long, payload: String) { alarms[id] = atMillis }
             override fun cancel(id: String) { alarms.remove(id) }

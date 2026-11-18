@@ -123,6 +123,14 @@ description = "Connect to the paired phone over Wi-Fi"
 usage = 'arg "[address]" help="IP:port from the Wireless debugging screen; found automatically if omitted"'
 run = 'scripts/tilt-input.sh connect-address "${usage_address:-}" && scripts/tilt-run.sh phone-connect'
 
+[tasks."tilt:phone-logs"]
+description = "Jarvis's own log from the phone (dev builds): mise run tilt:phone-logs [filter] [lines]"
+usage = '''
+arg "[filter]" help="Only lines containing this, e.g. Agent"
+arg "[lines]" help="How many lines (default 200)"
+'''
+run = 'scripts/tilt-input.sh logs-filter "${usage_filter:-}" && scripts/tilt-input.sh logs-lines "${usage_lines:-}" && scripts/tilt-run.sh phone-logs'
+
 [tasks."tilt:env-check"]
 description = "Check the fnox environment"
 run = "scripts/tilt-run.sh env-check"
@@ -199,6 +207,11 @@ description = "Live logs of the deployed bridge (Ctrl-C to stop)"
 run = "scripts/bridge-logs.sh"
 
 # ================================================================ steps (hidden; run by Tilt)
+
+[tasks."phone:logs"]
+hide = true
+description = "Show Jarvis's log from the phone"
+run = 'scripts/phone-logs.sh "$(cat .tilt-inputs/logs-filter 2>/dev/null || true)" "$(cat .tilt-inputs/logs-lines 2>/dev/null || echo 200)"'
 
 [tasks."bridge:check"]
 hide = true

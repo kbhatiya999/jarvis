@@ -1,6 +1,8 @@
 package com.kbhatiya999.jarvis.core.agent
 
 import com.kbhatiya999.jarvis.core.Platform
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import com.kbhatiya999.jarvis.core.JarvisLog
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -18,10 +20,26 @@ import kotlinx.serialization.json.long
  * The platform plugs in the [scheduler], [clock] and [output] (Android: exact alarms, java.time, active mode).
  * Without them (tests use fakes; iOS isn't wired) timers are kept but nothing fires. Main thread only.
  */
-class Agent internal constructor(private val platform: Platform) {
+class Agent internal constructor(private val platform: Platform, internal val scope: CoroutineScope) {
     var scheduler: Scheduler? = null
     var clock: AgentClock = UtcClock { platform.nowMillis() }
     var output: Output? = null
+
+    /** The model behind decisions (Jarvis: Gemini). Always used through [decide], which guards it. */
+    var decider: Decider? = null
+    private val guard by lazy { GuardedDecider({ decider }, rules, { clock.now() }) { decision(it) } }
+
+    /** Asks the model, within the rules' budget; never throws: failures come back as a silent decision with why. */
+    internal suspend fun decide(job: DecisionJob, context: String): Decision = guard.decide(job, context)
+
+    /** Shows a decision to the user (Jarvis: a line in the chat), for transparency. Main thread. */
+    var onDecision: ((String) -> Unit)? = null
+
+    /** A decision worth showing the user: journaled and shown in the chat. */
+    internal fun decision(text: String) {
+        journal(text)
+        onDecision?.invoke(text)
+    }
 
     /** Active mode's quiet hours; the platform sets it (Jarvis: active mode's setting). */
     var isQuietHour: (hour: Int) -> Boolean = { false }
@@ -79,7 +97,7 @@ class Agent internal constructor(private val platform: Platform) {
             else {
                 savePending(pending().filterNot { it.id == p.id })
                 features.firstOrNull { it.owns(p.id) }?.missed(p.id, p.at)
-                journal("missed ${p.id} (due ${clock.describe(p.at)}, phone was off)")
+                decision("Missed something due ${clock.describe(p.at)}: the phone was off")
             }
         }
         journal("rearmed ${all.size - due.size} timer(s)")
@@ -95,29 +113,40 @@ class Agent internal constructor(private val platform: Platform) {
         if (wasHandled(trigger.key)) return journal("${trigger.key}: already handled, ignored")
         markHandled(trigger.key)
         val feature = features.firstOrNull { it.handles(trigger) } ?: return journal("${trigger.key}: no feature handles it")
-        val outcome = try {
-            feature.handle(trigger)
-        } catch (e: Exception) {
-            JarvisLog.e(TAG, "${trigger.key}: ${feature.name} failed", e)
-            return
+        // Features may ask the model (seconds), so each wake-up runs as its own coroutine on the main thread.
+        scope.launch {
+            val outcome = try {
+                feature.handle(trigger)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                JarvisLog.e(TAG, "${trigger.key}: ${feature.name} failed", e)
+                return@launch
+            }
+            deliver(trigger, outcome)
         }
-        deliver(trigger, outcome)
     }
 
     private fun deliver(trigger: Trigger, outcome: Outcome) {
         when (outcome) {
-            is Outcome.Silent -> journal("${trigger.key}: silent (${outcome.why})")
+            is Outcome.Silent -> {
+                journal("${trigger.key}: silent (${outcome.why})")
+                if (outcome.show) onDecision?.invoke("Stayed quiet: ${outcome.why}")
+            }
             is Outcome.Notify -> {
                 platform.notify(outcome.title, outcome.text)
-                journal("${trigger.key}: notified (${outcome.why})")
+                decision("Sent a notification: ${outcome.text} (${outcome.why})")
             }
             is Outcome.Speak -> {
                 val spoke = output?.speak(outcome) ?: false
-                if (spoke) journal("${trigger.key}: spoke (${outcome.why})")
-                else {
+                if (spoke) {
+                    journal("${trigger.key}: spoke (${outcome.why})")
+                    onDecision?.invoke("Spoke up (${outcome.source}): ${outcome.why}")
+                } else {
                     // Active mode off, a call, Do Not Disturb...: the reminder still reaches the user.
                     platform.notify(outcome.fallbackTitle, outcome.fallbackText)
                     journal("${trigger.key}: couldn't speak, notified instead (${outcome.why})")
+                    onDecision?.invoke("Couldn't speak (call, Do Not Disturb or active mode off), so sent a notification: ${outcome.fallbackText}")
                 }
             }
         }
@@ -178,7 +207,8 @@ sealed interface Trigger {
 sealed interface Outcome {
     val why: String
 
-    data class Silent(override val why: String) : Outcome
+    /** [show]: tell the user in the chat (Jarvis chose not to speak up); false for bookkeeping (already done...). */
+    data class Silent(override val why: String, val show: Boolean = false) : Outcome
     data class Notify(val title: String, val text: String, override val why: String) : Outcome
 
     /** Start a voice conversation with [prompt] (Jarvis speaks first, prompted by [cue]); if that's not possible, notify. */
@@ -192,7 +222,7 @@ sealed interface Outcome {
 interface Feature {
     val name: String
     fun handles(trigger: Trigger): Boolean
-    fun handle(trigger: Trigger): Outcome
+    suspend fun handle(trigger: Trigger): Outcome
 
     /** True if the timer [id] is this feature's. */
     fun owns(id: String): Boolean

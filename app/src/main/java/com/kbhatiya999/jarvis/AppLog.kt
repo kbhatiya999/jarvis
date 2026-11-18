@@ -72,7 +72,16 @@ object AppLog : LogSink {
         io.execute { append(line) }
     }
 
-    private fun file(): File? = app?.let { File(File(it.filesDir, "logs"), "jarvis.log") }
+    /**
+     * Dev builds (version "…-dev…", from tilt:install) keep the log in the app's external folder, which adb can read
+     * (`mise run tilt:phone-logs`), so a test on the phone can be checked from the Mac. Releases keep it private.
+     */
+    private val dev = BuildConfig.VERSION_NAME.contains("-dev")
+
+    private fun file(): File? = app?.let { ctx ->
+        val base = if (dev) ctx.getExternalFilesDir(null) ?: ctx.filesDir else ctx.filesDir
+        File(File(base, "logs"), "jarvis.log")
+    }
 
     private fun append(line: String) {
         val f = file() ?: return

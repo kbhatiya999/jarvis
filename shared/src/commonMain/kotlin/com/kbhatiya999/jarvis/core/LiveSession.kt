@@ -262,6 +262,7 @@ class LiveSession internal constructor(
                     listener.onEndRequested()
                     return@forEach
                 }
+                replied = true // acting on what the user said counts as answering it (for the log)
                 jarvis.tools.call(name, call.obj("args") ?: JsonObject(emptyMap())) { result -> sendToolResponse(id, name, result) }
             }
             return

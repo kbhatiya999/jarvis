@@ -117,6 +117,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     fun endSession() {
         currentToken = Any()
         session?.close()
+        if (OneJarvis.chat === session) OneJarvis.chat = null
         session = null
         connected = false
         if (listening) keepAlive(false)
@@ -131,12 +132,15 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun ensureSession(): LiveSession {
         session?.let { return it }
+        // One Jarvis at a time: the chat takes over from active mode's conversation, if one is going.
+        ActiveModeService.endForChat()
         status = "Connecting"
         endAfterTurn = false
         val token = Any().also { currentToken = it }
         writer = jarvis.conversation.createWriter()
         return jarvis.createSession(jarvis.systemPrompt(), Callbacks(token)).also {
             session = it
+            OneJarvis.chat = it
             it.connect()
         }
     }
@@ -163,6 +167,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         override fun onClosed(reason: String?) {
             if (!live()) return
             writer.closeTurn()
+            if (OneJarvis.chat === session) OneJarvis.chat = null
             session = null
             connected = false
             if (listening) keepAlive(false)

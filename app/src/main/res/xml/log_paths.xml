@@ -2,4 +2,6 @@
 <!-- Only the shared copy of the log can be handed to other apps. -->
 <paths>
     <files-path name="logs" path="logs/" />
+    <!-- Dev builds keep the log where adb can read it (tilt:phone-logs). -->
+    <external-files-path name="dev-logs" path="logs/" /> 
 </paths>

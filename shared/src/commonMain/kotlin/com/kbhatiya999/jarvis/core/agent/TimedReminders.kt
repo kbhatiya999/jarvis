@@ -70,7 +70,7 @@ class TimedReminders internal constructor(private val agent: Agent, private val 
 
     override fun handles(trigger: Trigger) = trigger is Trigger.Timer && owns(trigger.id)
 
-    override fun handle(trigger: Trigger): Outcome {
+    override suspend fun handle(trigger: Trigger): Outcome {
         val id = (trigger as Trigger.Timer).id.removePrefix(PREFIX)
         val r = items.value.firstOrNull { it.id == id } ?: return Outcome.Silent("reminder $id no longer exists")
         if (r.status != Status.PENDING) return Outcome.Silent("reminder $id is ${r.status.name.lowercase()}")

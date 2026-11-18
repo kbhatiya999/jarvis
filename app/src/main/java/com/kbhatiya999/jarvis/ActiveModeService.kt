@@ -352,6 +352,7 @@ class ActiveModeService : Service() {
 
     private fun appOpened(pkgOrName: String, force: Boolean = false) {
         if (session != null) return
+        if (OneJarvis.chat != null) return // the chat screen has Jarvis's attention
         if (!force && !allowedNow(pkgOrName)) return
         if (jarvis.apiKey.value == null) return
         val name = appLabel(pkgOrName)
@@ -361,7 +362,7 @@ class ActiveModeService : Service() {
 
     /** A message from another Jarvis arrived: say it now if that's appropriate, else it waits for the next app open. */
     private fun messageArrived() {
-        val s = session
+        val s = session ?: OneJarvis.chat // the chat screen's conversation counts: one Jarvis at a time
         if (s != null) {
             val pending = jarvis.inbox.takePending()
             if (pending.isNotEmpty()) {
@@ -381,13 +382,21 @@ class ActiveModeService : Service() {
      * screen (they asked for it), but not in a call or with Do Not Disturb on: then false, and the agent notifies.
      */
     private fun speakForAgent(o: com.kbhatiya999.jarvis.core.agent.Outcome.Speak): Boolean {
-        if (jarvis.apiKey.value == null) return false
+        fun no(why: String): Boolean {
+            JarvisLog.i(TAG, "can't speak for ${o.source}: $why")
+            return false
+        }
+        if (jarvis.apiKey.value == null) return no("no API key")
         val audio = getSystemService(AudioManager::class.java)
-        if (audio.mode == AudioManager.MODE_IN_CALL || audio.mode == AudioManager.MODE_IN_COMMUNICATION || audio.mode == AudioManager.MODE_RINGTONE) return false
-        if (getSystemService(NotificationManager::class.java).currentInterruptionFilter > NotificationManager.INTERRUPTION_FILTER_ALL) return false
-        val s = session
+        if (audio.mode == AudioManager.MODE_IN_CALL || audio.mode == AudioManager.MODE_IN_COMMUNICATION || audio.mode == AudioManager.MODE_RINGTONE) {
+            return no("a call or voice chat is using the audio (mode ${audio.mode})")
+        }
+        if (getSystemService(NotificationManager::class.java).currentInterruptionFilter > NotificationManager.INTERRUPTION_FILTER_ALL) return no("Do Not Disturb is on")
+        val s = session ?: OneJarvis.chat // one Jarvis at a time: join the conversation that's going
         if (s != null) {
-            s.sendText("(Due now, from the user's ${o.source}: \"${o.fallbackText}\". Tell the user right away, briefly.)")
+            // The same instructions a fresh conversation would get (e.g. ask why if they can't), not just "tell them".
+            s.sendText("(${o.prompt})")
+            JarvisLog.i(TAG, "${o.source} told inside the ${if (s === session) "active mode" else "chat"} conversation")
             return true
         }
         startSession(o.prompt, o.cue, countsForCooldown = false, source = o.source)
@@ -411,7 +420,13 @@ class ActiveModeService : Service() {
     /** [cue] makes Jarvis speak first; null when it already answered (a clip) and should just listen. */
     private fun startSession(prompt: String, cue: String?, countsForCooldown: Boolean = true, source: String) {
         if (jarvis.apiKey.value == null) return
-        JarvisLog.i(TAG, "session start: $source, ${if (locked()) "locked" else "unlocked"}")
+        if (OneJarvis.chat != null) {
+            JarvisLog.w(TAG, "session start refused ($source): the chat screen holds the conversation")
+            return
+        }
+        // Never two at once: a conversation this replaces is ended first.
+        if (session != null) end(sound = false, reason = "replaced by $source")
+        JarvisLog.i(TAG, "session start: $source, ${if (locked()) "locked" else "unlocked"} (holder: active mode)")
         sessionStartedAt = System.currentTimeMillis()
         userTurnOpen = false
         jarvisSpoke = false
@@ -659,8 +674,20 @@ class ActiveModeService : Service() {
 
         val running get() = instance != null
 
+        /** The chat screen is starting its conversation: end active mode's, so only one Jarvis talks. Main thread. */
+        fun endForChat() {
+            val s = instance ?: return
+            if (s.session != null) s.end(sound = false, reason = "the chat screen took over")
+        }
+
         /** For the agent: say [o] now if active mode is on and it's a good moment; false → the agent notifies. Main thread. */
-        fun speak(o: com.kbhatiya999.jarvis.core.agent.Outcome.Speak): Boolean = instance?.speakForAgent(o) ?: false
+        fun speak(o: com.kbhatiya999.jarvis.core.agent.Outcome.Speak): Boolean {
+            instance?.let { return it.speakForAgent(o) }
+            // Active mode is off, but the chat screen is talking: say it there.
+            val chat = OneJarvis.chat ?: return false
+            chat.sendText("(${o.prompt})")
+            return true
+        }
 
         /** Called by AppWatcher on the main thread. */
         fun onAppOpened(pkg: String) {

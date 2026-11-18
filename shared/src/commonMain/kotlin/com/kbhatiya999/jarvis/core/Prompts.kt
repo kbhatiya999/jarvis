@@ -57,6 +57,14 @@ object Prompts {
             "(once) and call skip_goal with their words; if they want more time, call move_goal. If they say nothing, " +
             "that's fine: end_conversation."
 
+    /** A checkpoint before a goal's deadline: say what the decider wrote, then listen for the answer. */
+    fun goalCheck(goal: String, deadline: String, condition: String, text: String, question: String?) =
+        "GOAL CHECK. The user's goal \"$goal\" is due $deadline. You're checking one thing they need first: " +
+            "\"$condition\". Say this now, in character, in your own words if needed: \"$text\"" +
+            (question?.let { " Then ask: \"$it\"" } ?: "") + " Then listen. If they say it's done or fine, call " +
+            "answer_condition with ok \"yes\"; if it's a problem, call it with \"no\" and help briefly (one idea, no " +
+            "lecture). If they say nothing, that's fine: end_conversation."
+
     /** A timed reminder is due: say it, and offer to remind again. */
     fun timedReminder(text: String, now: String) =
         "TIMED REMINDER. The user asked you to remind them, and it is due now ($now): \"$text\". Say it at once, in " +

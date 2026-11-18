@@ -90,4 +90,54 @@ class GoalsTest {
         store.set("k", "not json")
         assertTrue(v2.load().isEmpty())
     }
+
+    @Test
+    fun withTwoGoalsOfTheSameNameTheOneJustDueIsTheOneAnswered() {
+        val phone = Phone()
+        val agent = phone.agent()
+        phone.now = at(agent.clock, "2026-11-18T20:00")
+        val old = (agent.goals.add("take a short walk", "2026-11-18T20:40", Importance.NICE) as Goals.Result.Ok).goal
+        phone.advanceTo(agent, at(agent.clock, "2026-11-18T20:40")) // due, never answered
+        val new = (agent.goals.add("take a short walk", "2026-11-18T21:40", Importance.NICE) as Goals.Result.Ok).goal
+        phone.advanceTo(agent, at(agent.clock, "2026-11-18T21:40"))
+        val skipped = agent.goals.skip("take a short walk", "it's raining") as Goals.Result.Ok
+        assertEquals(new.id, skipped.goal.id, "the goal just announced, not the old one")
+        assertEquals(listOf(old.id), agent.goals.active().map { it.id })
+    }
+
+    @Test
+    fun cantIsNotAReasonSoJarvisIsToldToAskWhy() {
+        val phone = Phone()
+        val agent = phone.agent()
+        agent.goals.add("take a short walk", "2026-11-18T18:00", Importance.NICE)
+        for (notWhy in listOf("I cannot go out today.", "I can't", "no", "not today", "I won't go out today", "")) {
+            val r = agent.goals.skip("walk", notWhy)
+            assertTrue(r is Goals.Result.Error && "what got in the way" in r.message, "\"$notWhy\" isn't a reason")
+        }
+        assertTrue(agent.goals.attempts.value.isEmpty())
+        assertIs<Goals.Result.Ok>(agent.goals.skip("walk", "my knee hurts"))
+        assertEquals("my knee hurts", agent.goals.attempts.value.single().reason)
+    }
+
+    @Test
+    fun theUserMayDeclineToSayWhy() {
+        val phone = Phone()
+        val agent = phone.agent()
+        agent.goals.add("take a short walk", "2026-11-18T18:00", Importance.NICE)
+        assertIs<Goals.Result.Ok>(agent.goals.skip("walk", "didn't say"))
+        assertEquals(null, agent.goals.attempts.value.single().reason)
+    }
+
+    @Test
+    fun aDueGoalNobodyAnsweredClosesAfterSixHours() {
+        val phone = Phone()
+        val agent = phone.agent()
+        agent.goals.add("take a short walk", "2026-11-18T18:00", Importance.NICE)
+        phone.advanceTo(agent, at(agent.clock, "2026-11-18T18:00"))
+        phone.now = at(agent.clock, "2026-11-18T23:00")
+        assertEquals(1, agent.goals.active().size, "5 hours: still waiting")
+        phone.now = at(agent.clock, "2026-11-19T00:30")
+        assertTrue(agent.goals.active().isEmpty())
+        assertEquals(Attempt.Outcome.NO_ANSWER, agent.goals.attempts.value.single().outcome)
+    }
 }

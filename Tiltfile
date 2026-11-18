@@ -49,6 +49,7 @@ step('devices', 'devices', 'phone')
 step('phone-pair', 'phone:pair', 'phone')
 step('phone-connect', 'phone:connect', 'phone')
 step('install', 'install', 'phone')  # dev build -> adb install
+step('phone-logs', 'phone:logs', 'phone')  # Jarvis's own log (dev builds)
 
 step('release-check', 'release:check', 'release')
 step('release-publish', 'release:publish', 'release')

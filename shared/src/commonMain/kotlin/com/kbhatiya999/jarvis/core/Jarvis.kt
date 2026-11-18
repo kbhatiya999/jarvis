@@ -18,7 +18,7 @@ class Jarvis private constructor(val platform: Platform) {
     val inbox = Inbox(this)
     val relay = Relay(this)
     /** Jarvis waking itself at a time and acting (core/agent): timed reminders now, goals next. */
-    val agent = com.kbhatiya999.jarvis.core.agent.Agent(platform)
+    val agent = com.kbhatiya999.jarvis.core.agent.Agent(platform, scope)
 
     /** The Gemini app talking through Jarvis (bridge/ in this repo). */
     val bridge = GeminiBridge(this)
@@ -27,6 +27,8 @@ class Jarvis private constructor(val platform: Platform) {
 
     init {
         agent.isQuietHour = { active.isQuietHour(it) }
+        agent.decider = com.kbhatiya999.jarvis.core.agent.GeminiDecider { apiKey.value }
+        agent.onDecision = { conversation.addDecision(it) }
     }
     val voiceLines = VoiceLines(this)
 

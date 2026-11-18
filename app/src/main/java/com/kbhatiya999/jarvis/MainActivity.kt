@@ -266,6 +266,21 @@ private fun ChatScreen(vm: JarvisViewModel) {
 
 @Composable
 private fun Bubble(m: Message) {
+    if (m.isDecision) {
+        // What Jarvis decided on its own, and why: small and grey, so it's there to check, not in the way.
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Text(
+                "Jarvis decided · " + m.text,
+                color = Color(0xFF9AA4B8),
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .widthIn(max = 340.dp)
+                    .background(Color(0xFF161C2A), RoundedCornerShape(8.dp))
+                    .padding(10.dp, 5.dp),
+            )
+        }
+        return
+    }
     if (m.isRelay) {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             Text(

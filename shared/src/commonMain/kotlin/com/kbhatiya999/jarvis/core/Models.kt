@@ -8,6 +8,7 @@ data class Message(
 ) {
     val fromUser get() = role == USER
     val isRelay get() = role == SENT || role == RECEIVED
+    val isDecision get() = role == DECISION
 
     companion object {
         const val USER = "user"
@@ -16,6 +17,8 @@ data class Message(
         const val SENT = "sent"
         /** A message that arrived from someone else's Jarvis. */
         const val RECEIVED = "received"
+        /** What Jarvis decided on its own and why (a plan, a check, staying quiet): shown in the chat, not sent to Gemini. */
+        const val DECISION = "decision"
     }
 }
 

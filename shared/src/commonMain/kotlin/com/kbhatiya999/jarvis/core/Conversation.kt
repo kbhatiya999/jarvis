@@ -35,6 +35,9 @@ class Conversation internal constructor(private val platform: Platform) {
     fun addSent(name: String, text: String) = add(Message.SENT, "To $name's Jarvis: $text")
     fun addReceived(name: String, text: String, sender: String = "$name's Jarvis") = add(Message.RECEIVED, "From $sender: $text")
 
+    /** Shows one of Jarvis's own decisions in the chat ("Planned: …", "Stayed quiet: …"). Not part of the memory. */
+    fun addDecision(text: String) = add(Message.DECISION, text)
+
     internal fun add(role: String, text: String): Long {
         val m = Message(role, text, platform.nowMillis(), nextId++)
         messages.value = messages.value + m
@@ -62,7 +65,7 @@ class Conversation internal constructor(private val platform: Platform) {
         val lines = ArrayDeque<String>()
         var size = 0
         for (m in messages.value.asReversed()) {
-            if (m.text.isBlank()) continue
+            if (m.text.isBlank() || m.role == Message.DECISION) continue
             val label = when (m.role) {
                 Message.USER -> "User: "
                 Message.SENT -> "[You sent a message] "

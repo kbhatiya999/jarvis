@@ -41,10 +41,15 @@ class Tools internal constructor(private val jarvis: Jarvis) {
                 "goal" to "The goal, as the user calls it or as listed."),
             fn("goal_done", "The user did the goal.",
                 "goal" to "The goal, as the user calls it or as listed."),
-            fn("skip_goal", "The user isn't doing or didn't do the goal this time.",
+            fn("skip_goal", "The user isn't doing or didn't do the goal this time. You need the reason first: if " +
+                "they only said they can't, ask once what got in the way, then call this with their answer.",
                 "goal" to "The goal, as the user calls it or as listed.",
-                "reason" to "What got in the way, in their words; empty if they didn't say."),
+                "reason" to "Why, in their words (\"it's raining\", \"too tired\"); \"didn't say\" if they won't say."),
             fn("list_goals", "The user's goals still going, with their times."),
+            fn("answer_condition", "The user says something their goal needs is done or fine (\"bag's packed\"), or is a problem.",
+                "goal" to "The goal, as the user calls it or as listed.",
+                "condition" to "The condition, as listed or as the user puts it.",
+                "ok" to "\"yes\" if it's done or fine, \"no\" if it's a problem."),
             fn(STAY_SILENT, "Say nothing: call this instead of speaking when what you heard wasn't meant for you " +
                 "(the user talking to someone else, a TV, noise, a half-heard fragment). It makes no sound."),
             fn(END_CONVERSATION, "End this conversation: the user wants you to stop or is done (\"stop\", \"that's " +
@@ -72,8 +77,9 @@ class Tools internal constructor(private val jarvis: Jarvis) {
             "move_timed_reminder" -> reply(timed(jarvis.agent.timedReminders.move(args.str("reminder"), args.str("time")), "Moved"))
             "cancel_timed_reminder" -> reply(timed(jarvis.agent.timedReminders.cancel(args.str("reminder")), "Cancelled"))
             "list_timed_reminders" -> reply(ok("Timed reminders still to come: ${jarvis.agent.timedReminders.describePending()}"))
-            "make_goal" -> reply(goal(jarvis.agent.goals.add(args.str("goal"), args.str("time"),
-                if (args.str("importance").trim().lowercase().startsWith("imp")) Importance.IMPORTANT else Importance.NICE), "Goal set"))
+            "make_goal" -> makeGoal(args, reply)
+            "answer_condition" -> reply(goal(jarvis.agent.goals.answer(args.str("goal"), args.str("condition"),
+                !args.str("ok").trim().lowercase().startsWith("n")), "Noted"))
             "move_goal" -> reply(goal(jarvis.agent.goals.move(args.str("goal"), args.str("time")), "Moved"))
             "cancel_goal" -> reply(goal(jarvis.agent.goals.cancel(args.str("goal")), "Cancelled"))
             "goal_done" -> reply(goal(jarvis.agent.goals.done(args.str("goal")), "Marked done"))
@@ -118,6 +124,25 @@ class Tools internal constructor(private val jarvis: Jarvis) {
     private fun timed(r: TimedReminders.Result, verb: String) = when (r) {
         is TimedReminders.Result.Ok -> ok("$verb: \"${r.reminder.text}\" at ${jarvis.agent.clock.describe(r.reminder.at)}.")
         is TimedReminders.Result.Error -> error(r.message)
+    }
+
+    /** Makes the goal, then drafts its plan (a few seconds) so Jarvis can tell the user how it'll help. */
+    private fun makeGoal(args: JsonObject, reply: (JsonObject) -> Unit) {
+        val importance = if (args.str("importance").trim().lowercase().startsWith("imp")) Importance.IMPORTANT else Importance.NICE
+        val made = jarvis.agent.goals.add(args.str("goal"), args.str("time"), importance)
+        if (made !is Goals.Result.Ok) return reply(goal(made, "Goal set"))
+        jarvis.scope.launch {
+            val plan = jarvis.agent.goals.draftPlan(made.goal.id)
+            val g = plan?.goal ?: made.goal
+            val clock = jarvis.agent.clock
+            val checks = g.conditions.joinToString("; ") { "\"${it.what}\" at ${clock.describe(it.checkAt!!)}" }
+            reply(ok(buildString {
+                append("Goal set: \"${g.what}\" by ${clock.describe(g.deadline)}. ")
+                append(if (checks.isEmpty()) "No checks planned before it; you'll say it when it's time. " else "You'll check: $checks. ")
+                plan?.question?.let { append("Ask the user, briefly: \"$it\" ") }
+                append("Tell the user in one or two sentences that you'll help make sure it happens, and when you'll check.")
+            }))
+        }
     }
 
     private fun goal(r: Goals.Result, verb: String) = when (r) {
